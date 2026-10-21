@@ -9,6 +9,12 @@ export function getCell(board: Board, idx: number): Cell {
   return cell;
 }
 
+export function getPeers(idx: number): readonly number[] {
+  const peers = PEERS[idx];
+  if (!peers) throw new RangeError(`Peers is falsy with index ${idx.toString()}`);
+  return peers;
+}
+
 // Trust caller candidates if rebuild = false
 export function sanitizeCandidates(board: Board, rebuild = false): Board {
   const newBoard: Board = [];

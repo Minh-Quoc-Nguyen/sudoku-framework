@@ -1,9 +1,10 @@
 import type { Board } from "../types/board.type.js";
 import type { Algorithm } from "../types/solver.type.js";
-import { BOXES, HOUSES, LINES, PEERS } from "../constants/cordinates.js";
+import { BOXES, HOUSES, LINES } from "../constants/cordinates.js";
 import { indexToMask, maskToIndex } from "../utils/bitwise.js";
-import { getCell, sanitizeCandidates } from "./common.js";
+import { getCell, getPeers, sanitizeCandidates } from "./common.js";
 
+// Simple value assignment algs return the modification to prevent board instance creation, memory allocation and hand more control to caller
 interface SimpleModification {
   index: number;
   value: number;
@@ -22,50 +23,50 @@ export function solveAll(board: Board): Board {
 }
 
 export function solveStep(board: Board, { candidates = "sanitize" }: { candidates?: "trust" | "sanitize" | "rebuild" } = {}): { board: Board; alg: Algorithm } | null {
-  let newBoard = [...board];
-  const simpleFinish = (modification: SimpleModification, alg: Algorithm) => {
-    // Shallow copy
-    const mask = indexToMask(modification.value);
-
-    // Modify cell
-    newBoard[modification.index] = { ...getCell(newBoard, modification.index), value: modification.value, candidates: mask };
-
-    // Modify peers
-    const peers = PEERS[modification.index];
-    if (!peers) throw new RangeError(`Peers is falsy with index ${modification.index.toString()}`);
-
-    for (const peer of peers) {
-      const cell = getCell(newBoard, peer);
-      newBoard[peer] = { ...cell, candidates: cell.candidates & ~mask };
-    }
-
-    return { board: newBoard, alg };
-  };
-
   // Rebuild regardless if explicitly set
-  if (candidates === "rebuild") newBoard = sanitizeCandidates(newBoard, true);
+  let newBoard = candidates === "rebuild" ? sanitizeCandidates(board, true) : [...board];
 
   const fullHouse = solveFullHouse(newBoard);
-  if (fullHouse) return simpleFinish(fullHouse, "FullHouse");
+  if (fullHouse) return { board: fullHouse, alg: "FullHouse" };
 
-  // Sanitize obvious candidates, ready for higher algs
+  // Sanitize obvious candidates if untrusted, ready for higher algs
   if (candidates !== "rebuild") newBoard = candidates === "trust" ? newBoard : sanitizeCandidates(newBoard);
 
   const hiddenSingleBox = solveHiddenSingleBox(newBoard);
-  if (hiddenSingleBox) return simpleFinish(hiddenSingleBox, "HiddenSingleBox");
+  if (hiddenSingleBox) return { board: hiddenSingleBox, alg: "HiddenSingleBox" };
 
   const hiddenSingleLine = solveHiddenSingleLine(newBoard);
-  if (hiddenSingleLine) return simpleFinish(hiddenSingleLine, "HiddenSingleLine");
+  if (hiddenSingleLine) return { board: hiddenSingleLine, alg: "HiddenSingleLine" };
 
   const nakedSingle = solveNakedSingle(newBoard);
-  if (nakedSingle) return simpleFinish(nakedSingle, "NakedSingle");
+  if (nakedSingle) return { board: nakedSingle, alg: "NakedSingle" };
 
   // No solution
   return null;
 }
 
+function applySimpleModification(board: Board, modification: SimpleModification | null): Board | null {
+  if (modification === null) return null;
+  const peers = getPeers(modification.index);
+  const newBoard = [...board];
+  const cell = getCell(newBoard, modification.index);
+  const mask = indexToMask(modification.value);
+
+  // Modify cell
+  newBoard[modification.index] = { ...cell, value: modification.value, candidates: mask };
+
+  // Modify peers
+  for (const peer of peers) {
+    const peerCell = getCell(newBoard, peer);
+    const newCandidates = peerCell.candidates & ~mask;
+    newBoard[peer] = peerCell.candidates === newCandidates ? peerCell : { ...peerCell, candidates: newCandidates };
+  }
+
+  return newBoard;
+}
+
 // Full house: a house with exactly one empty cell -> missing digit = 45 - sum of filled
-function solveFullHouse(board: Board): SimpleModification | null {
+function findFullHouse(board: Board): SimpleModification | null {
   boxLoop: for (const house of HOUSES) {
     let sum = 0;
     let missingIndex: number | null = null;
@@ -90,8 +91,12 @@ function solveFullHouse(board: Board): SimpleModification | null {
   return null;
 }
 
+function solveFullHouse(board: Board): Board | null {
+  return applySimpleModification(board, findFullHouse(board));
+}
+
 // Hidden single: Within a unit, a value only appear as a candidate once
-function solveHiddenSingleUnit(board: Board, units: readonly (readonly number[])[]): SimpleModification | null {
+function findHiddenSingleUnit(board: Board, units: readonly (readonly number[])[]): SimpleModification | null {
   for (const unit of units) {
     // seenOnce: digits that are a candidate in >= 1 cell
     // seenTwice: digits that are a candidate in >= 2 cells
@@ -126,16 +131,24 @@ function solveHiddenSingleUnit(board: Board, units: readonly (readonly number[])
   return null;
 }
 
-function solveHiddenSingleBox(board: Board): SimpleModification | null {
-  return solveHiddenSingleUnit(board, BOXES);
+function findHiddenSingleBox(board: Board): SimpleModification | null {
+  return findHiddenSingleUnit(board, BOXES);
 }
 
-function solveHiddenSingleLine(board: Board): SimpleModification | null {
-  return solveHiddenSingleUnit(board, LINES);
+function solveHiddenSingleBox(board: Board): Board | null {
+  return applySimpleModification(board, findHiddenSingleBox(board));
+}
+
+function findHiddenSingleLine(board: Board): SimpleModification | null {
+  return findHiddenSingleUnit(board, LINES);
+}
+
+function solveHiddenSingleLine(board: Board): Board | null {
+  return applySimpleModification(board, findHiddenSingleLine(board));
 }
 
 // Naked single: Cell only has one candidate
-function solveNakedSingle(board: Board): SimpleModification | null {
+function findNakedSingle(board: Board): SimpleModification | null {
   for (let i = 0; i < 81; i++) {
     const cell = getCell(board, i);
     if (cell.value) continue;
@@ -143,4 +156,8 @@ function solveNakedSingle(board: Board): SimpleModification | null {
     if (value) return { index: i, value };
   }
   return null;
+}
+
+function solveNakedSingle(board: Board): Board | null {
+  return applySimpleModification(board, findNakedSingle(board));
 }
