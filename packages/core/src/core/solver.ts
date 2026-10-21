@@ -1,6 +1,6 @@
 import type { Board } from "../types/board.type.js";
 import type { Algorithm } from "../types/solver.type.js";
-import { BOXES, COLUMNS, HOUSES, PEERS, ROWS } from "../constants/cordinates.js";
+import { BOXES, HOUSES, LINES, PEERS } from "../constants/cordinates.js";
 import { indexToMask, maskToIndex } from "../utils/bitwise.js";
 import { getCell, sanitizeCandidates } from "./common.js";
 
@@ -64,7 +64,7 @@ export function solveStep(board: Board, { candidates = "sanitize" }: { candidate
   return null;
 }
 
-// FullHouse: a house with exactly one empty cell -> missing digit = 45 - sum of filled
+// Full house: a house with exactly one empty cell -> missing digit = 45 - sum of filled
 function solveFullHouse(board: Board): SimpleModification | null {
   boxLoop: for (const house of HOUSES) {
     let sum = 0;
@@ -131,7 +131,7 @@ function solveHiddenSingleBox(board: Board): SimpleModification | null {
 }
 
 function solveHiddenSingleLine(board: Board): SimpleModification | null {
-  return solveHiddenSingleUnit(board, [...ROWS, ...COLUMNS]);
+  return solveHiddenSingleUnit(board, LINES);
 }
 
 // Naked single: Cell only has one candidate

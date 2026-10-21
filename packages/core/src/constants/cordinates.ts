@@ -22,6 +22,7 @@ export const BOX_OF: readonly Indices[] = buildUnit(boxOf);
 export const ROWS: readonly Indices[] = buildUnits(9, rowOf);
 export const COLUMNS: readonly Indices[] = buildUnits(9, colOf);
 export const BOXES: readonly Indices[] = buildUnits(9, boxOf);
+export const LINES: readonly Indices[] = [...ROWS, ...COLUMNS];
 export const HOUSES: readonly Indices[] = [...ROWS, ...COLUMNS, ...BOXES];
 
 // Peers resolver (Self excluded)
