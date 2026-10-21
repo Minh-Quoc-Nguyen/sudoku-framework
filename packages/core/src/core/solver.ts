@@ -10,6 +10,18 @@ interface SimpleModification {
   value: number;
 }
 
+export function solveAll(board: Board): Board {
+  let solvingBoard = board;
+  let solution = solveStep(solvingBoard, "rebuild");
+
+  while (solution) {
+    solvingBoard = solution.board;
+    solution = solveStep(solvingBoard, "trust");
+  }
+
+  return solvingBoard;
+}
+
 export function solveStep(board: Board, candidates: "trust" | "sanitize" | "rebuild" = "sanitize"): { board: Board; alg: Algorithm } | null {
   const simpleFinish = (modification: SimpleModification, alg: Algorithm) => {
     // Shallow copy
