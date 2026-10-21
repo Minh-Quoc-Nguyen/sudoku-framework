@@ -10,7 +10,7 @@ interface SimpleModification {
   value: number;
 }
 
-export function solveStep(board: Board, rebuildCandidates = false): { board: Board; alg: Algorithm } {
+export function solveStep(board: Board, rebuildCandidates = false): { board: Board; alg: Algorithm } | null {
   const simpleFinish = (modification: SimpleModification, alg: Algorithm) => {
     // Shallow copy
     const newBoard = [...board];
@@ -46,7 +46,8 @@ export function solveStep(board: Board, rebuildCandidates = false): { board: Boa
   const nakedSingle = solveNakedSingle(sanitizedBoard);
   if (nakedSingle) return simpleFinish(nakedSingle, "NakedSingle");
 
-  return { board: sanitizedBoard, alg: "None" };
+  // No solution
+  return null;
 }
 
 // Trust caller candidates if rebuild = false

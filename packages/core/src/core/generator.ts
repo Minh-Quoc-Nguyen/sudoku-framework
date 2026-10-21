@@ -1,3 +1,4 @@
+import seedrandom from "seedrandom";
 import type { Board, Cell } from "../types/board.type.js";
 import { PEERS } from "../constants/cordinates.js";
 
@@ -254,11 +255,14 @@ const seedBoard = (hints: number, random: () => number): Board => {
  *
  * Empty cells carry a candidate bitmask where bit `n` stands for digit `n`
  * (bits 1..9). Filled cells have no candidates (`0`).
+ *
+ * Pass `seed` to make generation deterministic: the same hints and seed always
+ * produce the same board. Omit it for a randomly seeded board.
  */
-export function newBoard(hints: number): Board {
+export function newBoard(hints: number, seed?: string): Board {
   if (!Number.isInteger(hints) || hints < MIN_HINTS || hints > MAX_HINTS) throw new RangeError(`Invalid hint count`);
 
-  const random = Math.random;
+  const random = seed === undefined ? seedrandom() : seedrandom(seed);
   if (hints >= DIG_MIN_HINTS) {
     const board = digBoard(hints, random);
     if (board !== null) return board;
