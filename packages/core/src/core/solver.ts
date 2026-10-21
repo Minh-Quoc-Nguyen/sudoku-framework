@@ -1,9 +1,9 @@
 import type { Board } from "../types/board.type.js";
 import type { Algorithm } from "../types/solver.type.js";
-import { BOX_OF, BOXES, COLUMN_OF, HOUSES, LINES, ROW_OF, XY_BOXES } from "../constants/cordinates.js";
-import { indexToMask, maskToIndex } from "../utils/bitwise.js";
+import { BOXES, COLUMN_OUTSIDE_BOX_OF, HOUSES, LINES, ROW_OUTSIDE_BOX_OF } from "../constants/cordinates.js";
+import { indexToMask, lowestSetIndex, maskToIndex } from "../utils/bitwise.js";
 import { getCell, getPeers, removeCandidate, sanitizeCandidates } from "./common.js";
-import type { Tuple } from "../types/common.type.js";
+import { COL_MASKS, ROW_MASKS } from "../constants/bitwise.js";
 
 // Simple value assignment algs return the modification to prevent board instance creation, memory allocation and hand more control to caller
 interface SimpleModification {
@@ -163,98 +163,46 @@ function solveNakedSingle(board: Board): Board | null {
 }
 
 interface PointingPair {
-  keep: number[];
-  remove: number[];
+  remove: readonly number[];
   value: number;
 }
 
 // Pointing pairs: a digit is confined to one row/column of a box AND
 function findPointingPairs(board: Board): PointingPair | null {
-  const AXES = [0, 1, 2] as const;
-  const OTHER_AXES = [
-    [1, 2],
-    [0, 2],
-    [0, 1],
-  ] as const;
-
-  // Tries every digit in `only`; returns the first one that has a real elimination.
-  // line = the 3 box cells on the aligned row/col, unitOf = ROW_OF or COLUMN_OF
-  const resolve = (only: number, line: number[], unitOf: readonly (readonly number[])[]): PointingPair | null => {
-    // Iterate set bits: the lowest digit may yield no elimination while a later one does
-    for (let m = only; m !== 0; m &= m - 1) {
-      const bit = m & -m;
-      const value = maskToIndex(bit);
-      if (value === null) continue; // unreachable (single bit), kept for type narrowing
-
-      // keep: cells inside the box that still hold the digit
-      const keep = line.filter((i) => getCell(board, i).candidates & bit);
-      if (keep.length === 0) continue;
-
-      // remove: cells in the same row/col but OUTSIDE the box that still hold the digit
-      // keep[0] is `number | undefined` under noUncheckedIndexedAccess; guard once and reuse
-      const first = keep[0];
-      if (first === undefined) continue;
-
-      // Widen the accessor tuples to plain readonly number[]:
-      // .includes(i) on a fixed-length/literal tuple rejects a plain `number`
-      const boxCells: readonly number[] = BOX_OF[first] ?? [];
-      const unitCells: readonly number[] = unitOf[first] ?? [];
-
-      // remove: same row/col, outside the box, still holding the digit as a candidate
-      const remove = unitCells.filter((i) => {
-        if (boxCells.includes(i)) return false;
-        const cell = getCell(board, i);
-        return cell.value === null && (cell.candidates & bit) !== 0;
-      });
-
-      // No elimination => not a valid pointing pair, try next digit
-      if (remove.length === 0) continue;
-      return { keep, remove, value };
-    }
-    return null;
+  const findRemovable = (box: (typeof BOXES)[number], mask: number, dir: "row" | "col"): readonly number[] | null => {
+    const relativeIndex = lowestSetIndex(mask);
+    if (relativeIndex === null) return null;
+    const trueIndex = box[relativeIndex];
+    if (!trueIndex) return null;
+    const removable = (dir === "row" ? ROW_OUTSIDE_BOX_OF : COLUMN_OUTSIDE_BOX_OF)[trueIndex];
+    if (!removable) return null;
+    // TODO: add check
+    return removable;
   };
 
-  for (const box of XY_BOXES) {
-    const rowMask: Tuple<number, 3> = [0, 0, 0];
-    const colMask: Tuple<number, 3> = [0, 0, 0];
-    // Solved cells have candidates === themselves; mask them out to avoid false hits
-    let solvedMask = 0;
+  for (const box of BOXES) {
+    const candidates: number[] = [];
+    for (const index of box) {
+      const cell = getCell(board, index);
+      candidates.push(cell.value ? 0 : cell.candidates);
+    }
 
-    for (const x of AXES) {
-      for (const y of AXES) {
-        const cell = getCell(board, box[x][y]);
-        rowMask[y] |= cell.candidates;
-        colMask[x] |= cell.candidates;
-        if (cell.value !== null) solvedMask |= indexToMask(cell.value);
+    for (let i = 1; i <= 9; i++) {
+      const digitMask = indexToMask(i);
+      const positionMask = candidates.reduce((mask, candidate, j) => ((candidate & digitMask) !== 0 ? mask | (1 << j) : mask), 0);
+      if (!positionMask) continue;
+
+      for (const rowMask of ROW_MASKS) {
+        if ((positionMask & ~rowMask) !== 0) continue;
+        const removable = findRemovable(box, positionMask, "row");
+        if (removable) return { remove: removable, value: i };
       }
-    }
 
-    // Rows first (priority)
-    for (const y of AXES) {
-      const [a, b] = OTHER_AXES[y];
-      const only = rowMask[y] & ~rowMask[a] & ~rowMask[b] & ~solvedMask;
-      if (only === 0) continue;
-
-      const hit = resolve(
-        only,
-        AXES.map((x) => box[x][y]),
-        ROW_OF,
-      );
-      if (hit) return hit;
-    }
-
-    // Columns, only reached if no row hit in this box
-    for (const x of AXES) {
-      const [a, b] = OTHER_AXES[x];
-      const only = colMask[x] & ~colMask[a] & ~colMask[b] & ~solvedMask;
-      if (only === 0) continue;
-
-      const hit = resolve(
-        only,
-        AXES.map((y) => box[x][y]),
-        COLUMN_OF,
-      );
-      if (hit) return hit;
+      for (const colMask of COL_MASKS) {
+        if ((positionMask & ~colMask) !== 0) continue;
+        const removable = findRemovable(box, positionMask, "col");
+        if (removable) return { remove: removable, value: i };
+      }
     }
   }
   return null;

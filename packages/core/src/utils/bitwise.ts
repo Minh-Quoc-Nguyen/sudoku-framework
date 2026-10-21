@@ -2,10 +2,18 @@ export function indexToMask(digit: number): number {
   return 1 << digit;
 }
 
+export function lowestSetIndex(mask: number): number | null {
+  // No bits set -> nothing to find
+  if (mask === 0) return null;
+  // mask & -mask isolates the lowest set bit; clz32 converts it to an index
+  return 31 - Math.clz32(mask & -mask);
+}
+
 export function maskToIndex(mask: number): number | null {
-  // If mask as 0 or has more than 1 bits set, return null (use isBitSet to probe instead)
-  if (mask === 0 || (mask & (mask - 1)) !== 0) return null;
-  return 31 - Math.clz32(mask);
+  // More than one bit set -> ambiguous, return null (use isBitSet to probe instead)
+  if ((mask & (mask - 1)) !== 0) return null;
+  // Exactly one bit (or zero) set, so the lowest set bit is the only set bit
+  return lowestSetIndex(mask);
 }
 
 export function isBitSet(mask: number, index: number): boolean {
