@@ -15,10 +15,14 @@ const buildUnit = (keyOf: (i: number) => number): readonly Indices[] => ALL.map(
 // For each unit index, collect every cell that belongs to it.
 const buildUnits = (size: number, keyOf: (i: number) => number): readonly Indices[] => Array.from({ length: size }, (_, key) => ALL.filter((i) => keyOf(i) === key));
 
+const buildUnitOutsideBox = (keyOf: (i: number) => number): readonly Indices[] => ALL.map((i) => ALL.filter((j) => keyOf(j) === keyOf(i) && boxOf(j) !== boxOf(i)));
+
 // Cell -> members of its unit (Self included)
 export const ROW_OF: readonly Indices[] = buildUnit(rowOf);
 export const COLUMN_OF: readonly Indices[] = buildUnit(colOf);
 export const BOX_OF: readonly Indices[] = buildUnit(boxOf);
+export const ROW_OUTSIDE_BOX_OF: readonly Indices[] = buildUnitOutsideBox(rowOf);
+export const COLUMN_OUTSIDE_BOX_OF: readonly Indices[] = buildUnitOutsideBox(colOf);
 
 // Unit -> members resolvers
 export const ROWS: readonly Indices[] = buildUnits(9, rowOf);
