@@ -1,9 +1,8 @@
-import { FULL_SUDOKU_MASK } from "../constants/bitwise.js";
 import type { Board } from "../types/board.type.js";
 import type { Algorithm } from "../types/solver.type.js";
 import { BOXES, COLUMNS, HOUSES, PEERS, ROWS } from "../constants/cordinates.js";
 import { indexToMask, maskToIndex } from "../utils/bitwise.js";
-import { getCell } from "./common.js";
+import { getCell, sanitizeCandidates } from "./common.js";
 
 interface SimpleModification {
   index: number;
@@ -63,40 +62,6 @@ export function solveStep(board: Board, { candidates = "sanitize" }: { candidate
 
   // No solution
   return null;
-}
-
-// Trust caller candidates if rebuild = false
-function sanitizeCandidates(board: Board, rebuild = false): Board {
-  const newBoard: Board = [];
-
-  for (let i = 0; i < 81; i++) {
-    // Get peer indices
-    const peers = PEERS[i];
-    if (!peers) throw new RangeError(`Peers is falsy with index ${i.toString()}`);
-
-    // Extract cell data
-    const cell = getCell(board, i);
-
-    // Early exit for solved cells: reuse the original object if the mask is already normalized
-    if (cell.value) {
-      const solvedMask = indexToMask(cell.value);
-      newBoard[i] = cell.candidates === solvedMask ? cell : { ...cell, candidates: solvedMask };
-      continue;
-    }
-
-    let used = 0;
-    for (const peer of peers) {
-      const peerValue = board[peer]?.value ?? null;
-      if (peerValue) {
-        used |= indexToMask(peerValue);
-      }
-    }
-
-    const candidates = (rebuild ? FULL_SUDOKU_MASK : cell.candidates) & ~used;
-    if (candidates === 0) throw new Error(`No candidates exists for cell index ${i.toString()}`);
-    newBoard[i] = cell.candidates === candidates ? cell : { ...cell, candidates };
-  }
-  return newBoard;
 }
 
 // FullHouse: a house with exactly one empty cell -> missing digit = 45 - sum of filled
