@@ -23,9 +23,9 @@ export function solveAll(board: Board): Board {
 }
 
 export function solveStep(board: Board, candidates: "trust" | "sanitize" | "rebuild" = "sanitize"): { board: Board; alg: Algorithm } | null {
+  let newBoard = [...board];
   const simpleFinish = (modification: SimpleModification, alg: Algorithm) => {
     // Shallow copy
-    const newBoard = [...board];
     const mask = digitToMask(modification.value);
 
     // Modify cell
@@ -47,15 +47,15 @@ export function solveStep(board: Board, candidates: "trust" | "sanitize" | "rebu
   if (fullHouse) return simpleFinish(fullHouse, "FullHouse");
 
   // Sanitize obvious candidates, ready for higher algs
-  const trustedBoard = candidates === "trust" ? board : sanitizeCandidates(board, candidates === "rebuild");
+  newBoard = candidates === "trust" ? board : sanitizeCandidates(board, candidates === "rebuild");
 
-  const hiddenSingleBox = solveHiddenSingleBox(trustedBoard);
+  const hiddenSingleBox = solveHiddenSingleBox(newBoard);
   if (hiddenSingleBox) return simpleFinish(hiddenSingleBox, "HiddenSingleBox");
 
-  const hiddenSingleLine = solveHiddenSingleLine(trustedBoard);
+  const hiddenSingleLine = solveHiddenSingleLine(newBoard);
   if (hiddenSingleLine) return simpleFinish(hiddenSingleLine, "HiddenSingleLine");
 
-  const nakedSingle = solveNakedSingle(trustedBoard);
+  const nakedSingle = solveNakedSingle(newBoard);
   if (nakedSingle) return simpleFinish(nakedSingle, "NakedSingle");
 
   // No solution
@@ -96,16 +96,16 @@ function sanitizeCandidates(board: Board, rebuild = false): Board {
   return newBoard;
 }
 
-// FullHouse: a box with exactly one empty cell -> missing digit = 45 - sum of filled
+// FullHouse: a house with exactly one empty cell -> missing digit = 45 - sum of filled
 function solveFullHouse(board: Board): SimpleModification | null {
   boxLoop: for (const house of HOUSES) {
     let sum = 0;
     let missingIndex: number | null = null;
 
     for (const cellIndex of house) {
-      const cellValue = board[cellIndex]?.value;
-      if (cellValue) {
-        sum += cellValue;
+      const cell = getCell(board, cellIndex);
+      if (cell.value) {
+        sum += cell.value;
       } else if (missingIndex === null) {
         missingIndex = cellIndex;
       } else {
@@ -145,12 +145,13 @@ function solveHiddenSingleUnit(board: Board, units: readonly (readonly number[])
 
     // Isolate lowest set bit; any hidden single is valid, so take the first
     const bit = unique & -unique;
+    const value = maskToSingleDigit(bit);
+    if (!value) continue;
 
     // Second pass: find the single cell that holds this digit as a candidate
     for (const idx of unit) {
       const cell = getCell(board, idx);
-      const value = maskToSingleDigit(bit);
-      if (cell.value === null && value) return { index: idx, value };
+      if (cell.value === null && (cell.candidates & bit) !== 0) return { index: idx, value };
     }
   }
 

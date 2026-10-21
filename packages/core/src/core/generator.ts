@@ -11,8 +11,8 @@ const SOLUTION_LIMIT = 2;
 const DIG_MIN_HINTS = 25;
 const DIG_ATTEMPTS = 10;
 
-// Bit `digit` represents `digit`, so bits 1..9 (0b1111111110) are the valid digits.
-const ALL_DIGITS = 0x3fe;
+// Bit `digit - 1` represents `digit`, matching the solver's candidate masks.
+const ALL_DIGITS = 0b111111111;
 const ALL_INDICES: readonly number[] = PEERS.map((_peers, index) => index);
 
 // Known 17-clue puzzles from Gordon Royle's collection. Used as starting points
@@ -42,7 +42,7 @@ interface GridTransform {
 
 const SOLVED: Choice = { index: -1, candidates: 0 };
 
-const digitBit = (digit: number): number => 1 << digit;
+const digitBit = (digit: number): number => 1 << (digit - 1);
 const gridAt = (grid: Uint16Array, index: number): number => grid[index] ?? 0;
 
 const candidatesAt = (grid: Uint16Array, index: number): number => {
@@ -253,8 +253,8 @@ const seedBoard = (hints: number, random: () => number): Board => {
  * realistically be reached that way, so a known 17-clue puzzle is randomly
  * transformed and padded with solution clues instead (also used as a fallback).
  *
- * Empty cells carry a candidate bitmask where bit `n` stands for digit `n`
- * (bits 1..9). Filled cells have no candidates (`0`).
+ * Empty cells carry a candidate bitmask where bit `n - 1` stands for digit `n`.
+ * Filled cells have no candidates (`0`).
  *
  * Pass `seed` to make generation deterministic: the same hints and seed always
  * produce the same board. Omit it for a randomly seeded board.
