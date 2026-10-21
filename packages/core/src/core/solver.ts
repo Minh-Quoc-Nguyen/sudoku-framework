@@ -162,24 +162,18 @@ function solveNakedSingle(board: Board): Board | null {
   return applySimpleModification(board, findNakedSingle(board));
 }
 
-interface PointingPair {
-  remove: readonly number[];
-  value: number;
+// Pointing pairs helper
+function filterCellCandidates(board: Board, cellIndexes: readonly number[], mask: number): number[] | null {
+  const result: number[] = [];
+  for (const index of cellIndexes) {
+    const cell = getCell(board, index);
+    if (!cell.value && (cell.candidates & mask) !== 0) result.push(index);
+  }
+  return result.length ? result : null;
 }
 
-// Pointing pairs: a digit is confined to one row/column of a box AND
-function findPointingPairs(board: Board): PointingPair | null {
-  const findRemovable = (box: (typeof BOXES)[number], mask: number, dir: "row" | "col"): readonly number[] | null => {
-    const relativeIndex = lowestSetIndex(mask);
-    if (relativeIndex === null) return null;
-    const trueIndex = box[relativeIndex];
-    if (!trueIndex) return null;
-    const removable = (dir === "row" ? ROW_OUTSIDE_BOX_OF : COLUMN_OUTSIDE_BOX_OF)[trueIndex];
-    if (!removable) return null;
-    // TODO: add check
-    return removable;
-  };
-
+// Pointing pairs: a digit is confined to one row/column of a box
+function findPointingPairs(board: Board): { remove: readonly number[]; value: number } | null {
   for (const box of BOXES) {
     const candidates: number[] = [];
     for (const index of box) {
@@ -191,16 +185,22 @@ function findPointingPairs(board: Board): PointingPair | null {
       const digitMask = indexToMask(i);
       const positionMask = candidates.reduce((mask, candidate, j) => ((candidate & digitMask) !== 0 ? mask | (1 << j) : mask), 0);
       if (!positionMask) continue;
+      const relativeIndex = lowestSetIndex(positionMask);
+      if (relativeIndex == null) continue;
+      const trueIndex = box[relativeIndex];
+      if (trueIndex == null) continue;
 
-      for (const rowMask of ROW_MASKS) {
-        if ((positionMask & ~rowMask) !== 0) continue;
-        const removable = findRemovable(box, positionMask, "row");
+      // Rows
+      const rowRemovable = ROW_OUTSIDE_BOX_OF[trueIndex];
+      if (rowRemovable && ROW_MASKS.some((m) => (positionMask & ~m) === 0)) {
+        const removable = filterCellCandidates(board, rowRemovable, digitMask);
         if (removable) return { remove: removable, value: i };
       }
 
-      for (const colMask of COL_MASKS) {
-        if ((positionMask & ~colMask) !== 0) continue;
-        const removable = findRemovable(box, positionMask, "col");
+      // Cols
+      const colRemovable = COLUMN_OUTSIDE_BOX_OF[trueIndex];
+      if (colRemovable && COL_MASKS.some((m) => (positionMask & ~m) === 0)) {
+        const removable = filterCellCandidates(board, colRemovable, digitMask);
         if (removable) return { remove: removable, value: i };
       }
     }
