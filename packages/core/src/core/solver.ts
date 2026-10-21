@@ -10,7 +10,7 @@ interface SimpleModification {
   value: number;
 }
 
-export function solveStep(board: Board, rebuildCandidates = false): { board: Board; alg: Algorithm } | null {
+export function solveStep(board: Board, candidates: "trust" | "sanitize" | "rebuild" = "sanitize"): { board: Board; alg: Algorithm } | null {
   const simpleFinish = (modification: SimpleModification, alg: Algorithm) => {
     // Shallow copy
     const newBoard = [...board];
@@ -35,15 +35,15 @@ export function solveStep(board: Board, rebuildCandidates = false): { board: Boa
   if (fullHouse) return simpleFinish(fullHouse, "FullHouse");
 
   // Sanitize obvious candidates, ready for higher algs
-  const sanitizedBoard = sanitizeCandidates(board, rebuildCandidates);
+  const trustedBoard = candidates === "trust" ? board : sanitizeCandidates(board, candidates === "rebuild");
 
-  const hiddenSingleBox = solveHiddenSingleBox(sanitizedBoard);
+  const hiddenSingleBox = solveHiddenSingleBox(trustedBoard);
   if (hiddenSingleBox) return simpleFinish(hiddenSingleBox, "HiddenSingleBox");
 
-  const hiddenSingleLine = solveHiddenSingleLine(sanitizedBoard);
+  const hiddenSingleLine = solveHiddenSingleLine(trustedBoard);
   if (hiddenSingleLine) return simpleFinish(hiddenSingleLine, "HiddenSingleLine");
 
-  const nakedSingle = solveNakedSingle(sanitizedBoard);
+  const nakedSingle = solveNakedSingle(trustedBoard);
   if (nakedSingle) return simpleFinish(nakedSingle, "NakedSingle");
 
   // No solution
