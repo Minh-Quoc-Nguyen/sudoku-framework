@@ -169,6 +169,7 @@ function solveHiddenSingleLine(board: Board): SimpleModification | null {
 function solveNakedSingle(board: Board): SimpleModification | null {
   for (let i = 0; i < 81; i++) {
     const cell = getCell(board, i);
+    if (cell.value) continue;
     const value = maskToSingleDigit(cell.candidates);
     if (value) return { index: i, value };
   }
