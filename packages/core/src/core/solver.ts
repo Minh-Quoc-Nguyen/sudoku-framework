@@ -1,8 +1,8 @@
-import { FULL_MASK } from "../constants/bitwise.js";
+import { FULL_SUDOKU_MASK } from "../constants/bitwise.js";
 import type { Board } from "../types/board.type.js";
 import type { Algorithm } from "../types/solver.type.js";
 import { BOXES, COLUMNS, HOUSES, PEERS, ROWS } from "../constants/cordinates.js";
-import { digitToMask, maskToSingleDigit } from "../utils/bitwise.js";
+import { indexToMask, maskToIndex } from "../utils/bitwise.js";
 import { getCell } from "./common.js";
 
 interface SimpleModification {
@@ -12,24 +12,24 @@ interface SimpleModification {
 
 export function solveAll(board: Board): Board {
   let solvingBoard = board;
-  let solution = solveStep(solvingBoard, "rebuild");
+  let solution = solveStep(solvingBoard, { candidates: "rebuild" });
 
   while (solution) {
     solvingBoard = solution.board;
-    solution = solveStep(solvingBoard, "trust");
+    solution = solveStep(solvingBoard, { candidates: "trust" });
   }
 
   return solvingBoard;
 }
 
-export function solveStep(board: Board, candidates: "trust" | "sanitize" | "rebuild" = "sanitize"): { board: Board; alg: Algorithm } | null {
+export function solveStep(board: Board, { candidates = "sanitize" }: { candidates?: "trust" | "sanitize" | "rebuild" } = {}): { board: Board; alg: Algorithm } | null {
   let newBoard = [...board];
   const simpleFinish = (modification: SimpleModification, alg: Algorithm) => {
     // Shallow copy
-    const mask = digitToMask(modification.value);
+    const mask = indexToMask(modification.value);
 
     // Modify cell
-    newBoard[modification.index] = { ...getCell(board, modification.index), value: modification.value, candidates: mask };
+    newBoard[modification.index] = { ...getCell(newBoard, modification.index), value: modification.value, candidates: mask };
 
     // Modify peers
     const peers = PEERS[modification.index];
@@ -43,11 +43,14 @@ export function solveStep(board: Board, candidates: "trust" | "sanitize" | "rebu
     return { board: newBoard, alg };
   };
 
-  const fullHouse = solveFullHouse(board);
+  // Rebuild regardless if explicitly set
+  if (candidates === "rebuild") newBoard = sanitizeCandidates(newBoard, true);
+
+  const fullHouse = solveFullHouse(newBoard);
   if (fullHouse) return simpleFinish(fullHouse, "FullHouse");
 
   // Sanitize obvious candidates, ready for higher algs
-  newBoard = candidates === "trust" ? board : sanitizeCandidates(board, candidates === "rebuild");
+  if (candidates !== "rebuild") newBoard = candidates === "trust" ? newBoard : sanitizeCandidates(newBoard);
 
   const hiddenSingleBox = solveHiddenSingleBox(newBoard);
   if (hiddenSingleBox) return simpleFinish(hiddenSingleBox, "HiddenSingleBox");
@@ -76,7 +79,7 @@ function sanitizeCandidates(board: Board, rebuild = false): Board {
 
     // Early exit for solved cells: reuse the original object if the mask is already normalized
     if (cell.value) {
-      const solvedMask = digitToMask(cell.value);
+      const solvedMask = indexToMask(cell.value);
       newBoard[i] = cell.candidates === solvedMask ? cell : { ...cell, candidates: solvedMask };
       continue;
     }
@@ -85,11 +88,11 @@ function sanitizeCandidates(board: Board, rebuild = false): Board {
     for (const peer of peers) {
       const peerValue = board[peer]?.value ?? null;
       if (peerValue) {
-        used |= digitToMask(peerValue);
+        used |= indexToMask(peerValue);
       }
     }
 
-    const candidates = (rebuild ? FULL_MASK : cell.candidates) & ~used;
+    const candidates = (rebuild ? FULL_SUDOKU_MASK : cell.candidates) & ~used;
     if (candidates === 0) throw new Error(`No candidates exists for cell index ${i.toString()}`);
     newBoard[i] = cell.candidates === candidates ? cell : { ...cell, candidates };
   }
@@ -145,7 +148,7 @@ function solveHiddenSingleUnit(board: Board, units: readonly (readonly number[])
 
     // Isolate lowest set bit; any hidden single is valid, so take the first
     const bit = unique & -unique;
-    const value = maskToSingleDigit(bit);
+    const value = maskToIndex(bit);
     if (!value) continue;
 
     // Second pass: find the single cell that holds this digit as a candidate
@@ -171,7 +174,7 @@ function solveNakedSingle(board: Board): SimpleModification | null {
   for (let i = 0; i < 81; i++) {
     const cell = getCell(board, i);
     if (cell.value) continue;
-    const value = maskToSingleDigit(cell.candidates);
+    const value = maskToIndex(cell.candidates);
     if (value) return { index: i, value };
   }
   return null;
