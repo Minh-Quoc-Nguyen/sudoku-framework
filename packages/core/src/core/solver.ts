@@ -1,9 +1,9 @@
 import type { Board } from "../types/board.type.js";
 import type { Algorithm } from "../types/solver.type.js";
 import { BOXES, COLUMN_OUTSIDE_BOX_OF, HOUSES, LINES, ROW_OUTSIDE_BOX_OF } from "../constants/cordinates.js";
-import { indexToMask, lowestSetIndex, maskToIndex } from "../utils/bitwise.js";
+import { indexToMask, isBitSet, lowestSetIndex, maskToIndex } from "../utils/bitwise.js";
 import { getCell, getPeers, removeCandidate, sanitizeCandidates } from "./common.js";
-import { COL_MASKS, ROW_MASKS } from "../constants/bitwise.js";
+import { COL_MASKS, FULL_CANDIDATE_MASK, ROW_MASKS } from "../constants/bitwise.js";
 
 // Simple value assignment algs return the modification to prevent board instance creation, memory allocation and hand more control to caller
 interface SimpleModification {
@@ -175,19 +175,24 @@ function filterCellCandidates(board: Board, cellIndexes: readonly number[], mask
 // Pointing pairs: a digit is confined to one row/column of a box
 function findPointingPairs(board: Board): { remove: readonly number[]; value: number } | null {
   for (const box of BOXES) {
+    // If a digit already appears as a solved value, stop checking it
+    let eligible = FULL_CANDIDATE_MASK;
     const candidates: number[] = [];
     for (const index of box) {
       const cell = getCell(board, index);
-      candidates.push(cell.value ? 0 : cell.candidates);
+      if (cell.value) {
+        eligible &= ~indexToMask(cell.value);
+        candidates.push(0);
+      } else {
+        candidates.push(cell.candidates);
+      }
     }
 
     for (let i = 1; i <= 9; i++) {
+      if (!isBitSet(eligible, i)) continue;
       const digitMask = indexToMask(i);
       const positionMask = candidates.reduce((mask, candidate, j) => ((candidate & digitMask) !== 0 ? mask | (1 << j) : mask), 0);
-      if (!positionMask) continue;
-      const relativeIndex = lowestSetIndex(positionMask);
-      if (relativeIndex == null) continue;
-      const trueIndex = box[relativeIndex];
+      const trueIndex = box[lowestSetIndex(positionMask) ?? -1];
       if (trueIndex == null) continue;
 
       // Rows
