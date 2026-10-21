@@ -1,17 +1,18 @@
+import { IllegalStateError } from "../classes/errors.js";
 import { FULL_CANDIDATE_MASK } from "../constants/bitwise.js";
 import { PEERS } from "../constants/cordinates.js";
 import type { Board, Cell } from "../types/board.type.js";
 import { indexToMask } from "../utils/bitwise.js";
 
-export function getCell(board: Board, idx: number): Cell {
-  const cell = board[idx];
-  if (!cell) throw new RangeError(`Cell is falsy with index ${idx.toString()}`);
+export function getCell(board: Board, index: number): Cell {
+  const cell = board[index];
+  if (!cell) throw new RangeError(`Cell is falsy with index ${index.toString()}`);
   return cell;
 }
 
-export function getPeers(idx: number): readonly number[] {
-  const peers = PEERS[idx];
-  if (!peers) throw new RangeError(`Peers is falsy with index ${idx.toString()}`);
+export function getPeers(index: number): readonly number[] {
+  const peers = PEERS[index];
+  if (!peers) throw new RangeError(`Peers is falsy with index ${index.toString()}`);
   return peers;
 }
 
@@ -43,8 +44,15 @@ export function sanitizeCandidates(board: Board, rebuild = false): Board {
     }
 
     const candidates = (rebuild ? FULL_CANDIDATE_MASK : cell.candidates) & ~used;
-    if (candidates === 0) throw new Error(`No candidates exists for cell index ${i.toString()}`);
+    if (candidates === 0) throw new IllegalStateError(IllegalStateError.Code.NO_CANDIDATES);
     newBoard[i] = cell.candidates === candidates ? cell : { ...cell, candidates };
   }
   return newBoard;
+}
+
+export function removeCandidate(board: Board, index: number, mask: number): Cell {
+  const cell = getCell(board, index);
+  const newCandidates = cell.candidates & ~mask;
+  if (newCandidates === 0) throw new IllegalStateError(IllegalStateError.Code.NO_CANDIDATES);
+  return cell.candidates === newCandidates ? cell : { ...cell, candidates: newCandidates };
 }

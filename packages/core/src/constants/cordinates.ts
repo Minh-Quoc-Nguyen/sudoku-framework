@@ -1,3 +1,5 @@
+import type { Cordinates } from "../types/common.type.js";
+
 type Indices = readonly number[];
 
 // Load-time helpers (not exported). Row-major layout, 0-based
@@ -24,6 +26,11 @@ export const COLUMNS: readonly Indices[] = buildUnits(9, colOf);
 export const BOXES: readonly Indices[] = buildUnits(9, boxOf);
 export const LINES: readonly Indices[] = [...ROWS, ...COLUMNS];
 export const HOUSES: readonly Indices[] = [...ROWS, ...COLUMNS, ...BOXES];
+
+// Cordinate-based accessors
+export const XY_BOXES: readonly Cordinates<number, 3, 3>[] = BOXES.map(
+  (cells) => Array.from({ length: 3 }, (_y, y) => Array.from({ length: 3 }, (_x, x) => cells[y * 3 + x])) as Cordinates<number, 3, 3>,
+);
 
 // Peers resolver (Self excluded)
 export const PEERS: readonly Indices[] = ALL.map((i) => ALL.filter((j) => j !== i && (rowOf(j) === rowOf(i) || colOf(j) === colOf(i) || boxOf(j) === boxOf(i))));
