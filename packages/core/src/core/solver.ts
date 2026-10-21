@@ -1,4 +1,4 @@
-import type { Board } from "../types/board.type.js";
+import type { Board, Cell } from "../types/board.type.js";
 import type { Algorithm } from "../types/solver.type.js";
 import { BOXES, COLUMN_OUTSIDE_BOX_OF, HOUSES, LINES, ROW_OUTSIDE_BOX_OF } from "../constants/cordinates.js";
 import { indexToMask, isBitSet, lowestSetIndex, maskToIndex } from "../utils/bitwise.js";
@@ -67,7 +67,7 @@ function applySimpleModification(board: Board, modification: SimpleModification 
 
 // Full house: a house with exactly one empty cell -> missing digit = 45 - sum of filled
 function findFullHouse(board: Board): SimpleModification | null {
-  boxLoop: for (const house of HOUSES) {
+  houseLoop: for (const house of HOUSES) {
     let sum = 0;
     let missingIndex: number | null = null;
 
@@ -78,11 +78,11 @@ function findFullHouse(board: Board): SimpleModification | null {
       } else if (missingIndex === null) {
         missingIndex = cellIndex;
       } else {
-        continue boxLoop;
+        continue houseLoop;
       }
     }
 
-    // Fully filled box: no empty cell found, nothing to place
+    // Fully filled house: no empty cell found, nothing to place
     if (missingIndex === null) continue;
 
     return { index: missingIndex, value: 45 - sum };
@@ -98,33 +98,29 @@ function solveFullHouse(board: Board): Board | null {
 // Hidden single: Within a unit, a value only appear as a candidate once
 function findHiddenSingleUnit(board: Board, units: readonly (readonly number[])[]): SimpleModification | null {
   for (const unit of units) {
-    // seenOnce: digits that are a candidate in >= 1 cell
-    // seenTwice: digits that are a candidate in >= 2 cells
     let seenOnce = 0;
     let seenTwice = 0;
-
+    // Store to reuse
+    const validCells: { cell: Cell; index: number }[] = [];
     for (const index of unit) {
       const cell = getCell(board, index);
+      // Has value, irrelevant
       if (cell.value !== null) continue;
 
+      validCells.push({ cell, index });
       const c = cell.candidates;
-      seenTwice |= seenOnce & c; // already seen before AND in this cell -> duplicate
+      seenTwice |= seenOnce & c;
       seenOnce |= c;
     }
 
-    // Digits with exactly one possible cell in this box
-    const unique = seenOnce & ~seenTwice;
-    if (unique === 0) continue; // common case: no hidden single in this box
+    // Find smallest digit that's unique
+    const value = lowestSetIndex(seenOnce & ~seenTwice);
+    if (value === null) continue;
+    const digitMask = indexToMask(value);
 
-    // Isolate lowest set bit; any hidden single is valid, so take the first
-    const bit = unique & -unique;
-    const value = maskToIndex(bit);
-    if (!value) continue;
-
-    // Second pass: find the single cell that holds this digit as a candidate
-    for (const index of unit) {
-      const cell = getCell(board, index);
-      if (cell.value === null && (cell.candidates & bit) !== 0) return { index, value };
+    // Filter for said cell
+    for (const { cell, index } of validCells) {
+      if ((cell.candidates & digitMask) !== 0) return { index, value };
     }
   }
 
