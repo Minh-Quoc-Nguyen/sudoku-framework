@@ -1,9 +1,8 @@
-import type { Board, Cell } from "../types/board.type.js";
-import type { Algorithm } from "../types/solver.type.js";
-import { BOXES, COLUMN_OUTSIDE_BOX_OF, HOUSES, LINES, PEERS, ROW_OUTSIDE_BOX_OF } from "../constants/cordinates.js";
-import { indexToMask, isBitSet, lowestSetIndex, maskToIndex } from "../utils/bitwise.js";
-import { getCell, getUnit, removeCandidate, sanitizeCandidates } from "./common.js";
-import { COL_MASKS, FULL_CANDIDATE_MASK, ROW_MASKS } from "../constants/bitwise.js";
+import { COL_MASKS, ROW_MASKS } from "../../constants/bitwise.js";
+import { BOXES, COLUMN_OUTSIDE_BOX_OF, HOUSES, LINES, PEERS, ROW_OUTSIDE_BOX_OF } from "../../constants/cordinates.js";
+import type { Board, Cell } from "../../types/board.type.js";
+import { indexToMask, lowestSetIndex, maskToIndex } from "../../utils/bitwise.js";
+import { candidatesToDigitMasks, getUnit, removeCandidate } from "../../utils/board.js";
 
 // Simple value assignment algs return the modification to prevent board instance creation, memory allocation and hand more control to caller
 interface SimpleModification {
@@ -11,49 +10,10 @@ interface SimpleModification {
   value: number;
 }
 
-export function solveAll(board: Board): Board {
-  let solvingBoard = board;
-  let solution = solveStep(solvingBoard, { candidates: "rebuild" });
-
-  while (solution) {
-    solvingBoard = solution.board;
-    solution = solveStep(solvingBoard, { candidates: "trust" });
-  }
-
-  return solvingBoard;
-}
-
-export function solveStep(board: Board, { candidates = "sanitize" }: { candidates?: "trust" | "sanitize" | "rebuild" } = {}): { board: Board; alg: Algorithm } | null {
-  // Rebuild regardless if explicitly set
-  // The solvers create a shallow board copy, therefore solveStep does not need to repeat this work
-  let newBoard = candidates === "rebuild" ? sanitizeCandidates(board, true) : board;
-
-  const fullHouse = solveFullHouse(newBoard);
-  if (fullHouse) return { board: fullHouse, alg: "FullHouse" };
-
-  // Sanitize obvious candidates if untrusted, ready for higher algs
-  if (candidates !== "rebuild") newBoard = candidates === "trust" ? newBoard : sanitizeCandidates(newBoard);
-
-  const hiddenSingleBox = solveHiddenSingleBox(newBoard);
-  if (hiddenSingleBox) return { board: hiddenSingleBox, alg: "HiddenSingleBox" };
-
-  const hiddenSingleLine = solveHiddenSingleLine(newBoard);
-  if (hiddenSingleLine) return { board: hiddenSingleLine, alg: "HiddenSingleLine" };
-
-  const nakedSingle = solveNakedSingle(newBoard);
-  if (nakedSingle) return { board: nakedSingle, alg: "NakedSingle" };
-
-  const pointingPairs = solvePointingPairs(newBoard);
-  if (pointingPairs) return { board: pointingPairs, alg: "PointingPairs" };
-
-  // No solution
-  return null;
-}
-
 function applySimpleModification(board: Board, modification: SimpleModification | null): Board | null {
   if (modification === null) return null;
   const newBoard = [...board];
-  const cell = getCell(newBoard, modification.index);
+  const cell = getUnit(newBoard, modification.index);
   const mask = indexToMask(modification.value);
 
   // Modify cell
@@ -73,7 +33,7 @@ function findFullHouse(board: Board): SimpleModification | null {
     let missingIndex: number | null = null;
 
     for (const cellIndex of house) {
-      const cell = getCell(board, cellIndex);
+      const cell = getUnit(board, cellIndex);
       if (cell.value) {
         sum += cell.value;
       } else if (missingIndex === null) {
@@ -92,7 +52,7 @@ function findFullHouse(board: Board): SimpleModification | null {
   return null;
 }
 
-function solveFullHouse(board: Board): Board | null {
+export function solveFullHouse(board: Board): Board | null {
   return applySimpleModification(board, findFullHouse(board));
 }
 
@@ -104,7 +64,7 @@ function findHiddenSingleUnit(board: Board, units: readonly (readonly number[])[
     // Store to reuse
     const validCells: { cell: Cell; index: number }[] = [];
     for (const index of unit) {
-      const cell = getCell(board, index);
+      const cell = getUnit(board, index);
       // Has value, irrelevant
       if (cell.value !== null) continue;
 
@@ -132,7 +92,7 @@ function findHiddenSingleBox(board: Board): SimpleModification | null {
   return findHiddenSingleUnit(board, BOXES);
 }
 
-function solveHiddenSingleBox(board: Board): Board | null {
+export function solveHiddenSingleBox(board: Board): Board | null {
   return applySimpleModification(board, findHiddenSingleBox(board));
 }
 
@@ -140,14 +100,14 @@ function findHiddenSingleLine(board: Board): SimpleModification | null {
   return findHiddenSingleUnit(board, LINES);
 }
 
-function solveHiddenSingleLine(board: Board): Board | null {
+export function solveHiddenSingleLine(board: Board): Board | null {
   return applySimpleModification(board, findHiddenSingleLine(board));
 }
 
 // Naked single: Cell only has one candidate
 function findNakedSingle(board: Board): SimpleModification | null {
   for (let i = 0; i < 81; i++) {
-    const cell = getCell(board, i);
+    const cell = getUnit(board, i);
     if (cell.value) continue;
     const value = maskToIndex(cell.candidates);
     if (value) return { index: i, value };
@@ -155,7 +115,7 @@ function findNakedSingle(board: Board): SimpleModification | null {
   return null;
 }
 
-function solveNakedSingle(board: Board): Board | null {
+export function solveNakedSingle(board: Board): Board | null {
   return applySimpleModification(board, findNakedSingle(board));
 }
 
@@ -163,7 +123,7 @@ function solveNakedSingle(board: Board): Board | null {
 function filterCellCandidates(board: Board, cellIndexes: readonly number[], mask: number): number[] | null {
   const result: number[] = [];
   for (const index of cellIndexes) {
-    const cell = getCell(board, index);
+    const cell = getUnit(board, index);
     if (!cell.value && (cell.candidates & mask) !== 0) result.push(index);
   }
   return result.length ? result : null;
@@ -172,44 +132,29 @@ function filterCellCandidates(board: Board, cellIndexes: readonly number[], mask
 // Pointing pairs: a digit is confined to one row/column of a box
 function findPointingPairs(board: Board): { remove: readonly number[]; value: number } | null {
   for (const box of BOXES) {
-    // If a digit already appears as a solved value, stop checking it
-    let eligible = FULL_CANDIDATE_MASK;
-    const candidates: number[] = [];
-    for (const index of box) {
-      const cell = getCell(board, index);
-      if (cell.value) {
-        eligible &= ~indexToMask(cell.value);
-        candidates.push(0);
-      } else {
-        candidates.push(cell.candidates);
-      }
-    }
-
-    for (let i = 1; i <= 9; i++) {
-      if (!isBitSet(eligible, i)) continue;
-      const digitMask = indexToMask(i);
-      const positionMask = candidates.reduce((mask, candidate, j) => ((candidate & digitMask) !== 0 ? mask | (1 << j) : mask), 0);
-      const trueIndex = getUnit(box, lowestSetIndex(positionMask) ?? -1);
+    for (const { digit, mask } of candidatesToDigitMasks(board, box)) {
+      const trueIndex = getUnit(box, lowestSetIndex(mask) ?? -1);
+      const digitMask = indexToMask(digit);
 
       // Rows
-      const rowRemovable = getUnit(ROW_OUTSIDE_BOX_OF, trueIndex);
-      if (ROW_MASKS.some((m) => (positionMask & ~m) === 0)) {
+      if (ROW_MASKS.some((m) => (mask & ~m) === 0)) {
+        const rowRemovable = getUnit(ROW_OUTSIDE_BOX_OF, trueIndex);
         const removable = filterCellCandidates(board, rowRemovable, digitMask);
-        if (removable) return { remove: removable, value: i };
+        if (removable) return { remove: removable, value: digit };
       }
 
       // Cols
-      const colRemovable = getUnit(COLUMN_OUTSIDE_BOX_OF, trueIndex);
-      if (COL_MASKS.some((m) => (positionMask & ~m) === 0)) {
+      if (COL_MASKS.some((m) => (mask & ~m) === 0)) {
+        const colRemovable = getUnit(COLUMN_OUTSIDE_BOX_OF, trueIndex);
         const removable = filterCellCandidates(board, colRemovable, digitMask);
-        if (removable) return { remove: removable, value: i };
+        if (removable) return { remove: removable, value: digit };
       }
     }
   }
   return null;
 }
 
-function solvePointingPairs(board: Board): Board | null {
+export function solvePointingPairs(board: Board): Board | null {
   const solution = findPointingPairs(board);
   if (!solution) return null;
   const newBoard = [...board];
