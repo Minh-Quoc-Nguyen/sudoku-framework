@@ -4,8 +4,8 @@ Guidance for AI agents working in this repository.
 
 ## Project overview
 
-`sudoku-framework` is a pnpm monorepo for a Sudoku engine, intended to be consumed by a CLI and a web UI.
-Only `@sudoku/core` is implemented today; `packages/cli` and `packages/web` are empty placeholders.
+`sudoku-framework` is a pnpm monorepo for a Sudoku engine.
+Only `@sudoku/core` is implemented today;`packages/web` is an empty placeholders.
 
 - **Runtime/tooling**: Node >= 22.13, pnpm >= 11 (`packageManager: pnpm@11.15.1`), ESM (`"type": "module"`).
 - **Language**: TypeScript (ES2025, `NodeNext`), strict settings, no bundler.
@@ -37,16 +37,19 @@ Per-package (e.g. `packages/core`): `pnpm --filter @sudoku/core test`, `... type
 packages/core/src/
   index.ts                  # public API surface (only re-exports)
   core/
-    solver.ts               # solveStep() + algorithm find/solve function pairs
+    solver/
+      solver.ts             # solveStep(), solveAll() orchestrator
+      algorithms.ts         # algorithm find/solve function pairs
     generator.ts            # newBoard(): generated support code for testing the solver
-    common.ts               # board/candidate helpers, accessors
   constants/
     cordinates.ts           # precomputed units: ROWS, COLUMNS, BOXES, LINES, HOUSES, PEERS, *_OF
     bitwise.ts              # candidate masks for rows/cols, FULL_CANDIDATE_MASK
     algorithms.ts           # ALGORITHM_SCORE registry + difficulty ordering
   types/                    # board, solver, and utility types
   classes/errors.ts         # IllegalStateError
-  utils/bitwise.ts          # mask <-> bit-index helpers (tested in bitwise.test.ts)
+  utils/
+    bitwise.ts              # mask <-> bit-index helpers (tested in bitwise.test.ts)
+    board.ts                # board/candidate helpers, accessors
 ```
 
 `packages/*/dist` is build output and is gitignored.
@@ -60,32 +63,34 @@ packages/core/src/
 - `candidates === 0` on an unsolved cell is an illegal state and throws `IllegalStateError` (`NO_CANDIDATES`).
 - `ALGORITHM_SCORE` in `constants/algorithms.ts` is the single registry of algorithm names and difficulty scores; the `Algorithm` type is derived from its keys. Add new algorithms there.
 - **Hot-path convention**: solvers mutate nothing. They take a `Board`, return a new `Board`, and reuse unchanged `Cell` objects. `applySimpleModification` shallow-copies the board array, replaces the solved cell, and removes the digit from peers.
-- `solveStep` tries algorithms in order — FullHouse → HiddenSingleBox → HiddenSingleLine → NakedSingle → PointingPairs — and returns `null` when stuck. `solveAll` loops until `solveStep` returns `null`; it does **not** backtrack, so it may leave a partially solved board.
-- Generation (`newBoard` in `core/generator.ts`) *does* backtrack internally. It digs clues from a full solution while a solution counter preserves uniqueness for >= 25 hints; below that it transforms known 17-clue seed puzzles and pads them.
+- `solveStep` tries algorithms in order — FullHouse → HiddenSingleBox → HiddenSingleLine → NakedSingle → PointingPairs → Claiming → NakedPair — and returns `null` when stuck. `solveAll` loops until `solveStep` returns `null`; it does **not** backtrack, so it may leave a partially solved board.
+- Generation (`newBoard` in `core/generator.ts`) _does_ backtrack internally. It digs clues from a full solution while a solution counter preserves uniqueness for >= 25 hints; below that it transforms known 17-clue seed puzzles and pads them.
   - `generator.ts` is **generated support code**, not hand-maintained core logic. Its current purpose is to exercise and validate the solver by producing known-solution boards.
   - Once the solver is complete, the generator is intended to be the foundation for uniqueness checking and board difficulty rating. Treat it as a verification tool rather than the final product.
 - Generator-internal grids are `Uint16Array` and use a **local** bit convention (`1 << (digit - 1)`) with `0` meaning empty. These masks never cross the public API; `toBoard` converts to the `Cell` representation.
 
-## Solver structure (`core/solver.ts`)
+## Solver structure (`core/solver/`)
 
-Every algorithm is implemented as a **find/solve pair**:
+Every algorithm is implemented as a **find/solve pair** in `core/solver/algorithms.ts`, with orchestration in `core/solver/solver.ts`:
 
-| Pure finder | Applier | Deduction |
-| --- | --- | --- |
-| `findFullHouse(board)` | `solveFullHouse(board)` | The only empty cell in a house gets the missing digit (`45 - sum`). |
-| `findHiddenSingleUnit(board, units)` | `solveHiddenSingleBox` / `solveHiddenSingleLine` | A digit has exactly one candidate cell in a unit. The shared finder takes the unit list (`BOXES` or `LINES`); the two wrappers bind it. |
-| `findNakedSingle(board)` | `solveNakedSingle(board)` | An unsolved cell has exactly one candidate. |
-| `findPointingPairs(board)` | `solvePointingPairs(board)` | A digit in a box is confined to one row/column, so remove it from the rest of that line. Returns `{ remove, value }` rather than a placement. |
+| Pure finder                          | Applier                                          | Deduction                                                                                                                                     |
+| ------------------------------------ | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `findFullHouse(board)`               | `solveFullHouse(board)`                          | The only empty cell in a house gets the missing digit (`45 - sum`).                                                                           |
+| `findHiddenSingleUnit(board, units)` | `solveHiddenSingleBox` / `solveHiddenSingleLine` | A digit has exactly one candidate cell in a unit. The shared finder takes the unit list (`BOXES` or `LINES`); the two wrappers bind it.       |
+| `findNakedSingle(board)`             | `solveNakedSingle(board)`                        | An unsolved cell has exactly one candidate.                                                                                                   |
+| `findPointingPairs(board)`           | `solvePointingPairs(board)`                      | A digit in a box is confined to one row/column, so remove it from the rest of that line. Returns `{ remove, value }` rather than a placement. |
+| `findClaiming(board)`                | `solveClaiming(board)`                           | A digit in a row/column is confined to one box, so remove it from the rest of that box. Returns `{ remove, value }` rather than a placement.  |
+| `findNakedPair(board)`               | `solveNakedPair(board)`                          | Two cells in a house share the same pair of candidates; remove those candidates from all other cells in the house. Returns `{ house, mask }`. |
 
 Rules for the pair pattern:
 
 - **Finders are pure.** `findX` scans the board, returns a description of the deduction, and `null` when the pattern is absent. It never builds a new board.
 - **Appliers are pure too.** `solveX(board)` calls its finder, applies the result, and returns a **new `Board`**, or `null` when there was nothing to apply. It never mutates the input board or its cells.
 - **Placements** share `applySimpleModification(board, modification)`: it shallow-copies the array, sets the cell to `{ value, candidates: indexToMask(value) }`, and removes that digit from all peers via `removeCandidate`.
-- **Eliminations** (like pointing pairs) copy the array and call `removeCandidate` only on the affected cells.
+- **Eliminations** (like pointing pairs/claiming/naked pairs) copy the array and call `removeCandidate` or directly update cells in the house.
 - `SimpleModification` (`{ index, value }`) is the common result shape for single placements.
-- `solveStep(board, { candidates })` is the orchestrator: it runs the algorithms in the order listed above and returns `{ board, alg }` for the first success, or `null`. `alg` is the `Algorithm` key used for scoring.
-- `solveAll(board)` repeatedly calls `solveStep` and stops when it returns `null`.
+- `solveStep(board, { candidates })` is the orchestrator: it runs the algorithms in the order listed above and returns `{ board, alg }` for the first success, or `null`. `alg` is the `Algorithm` key used for scoring. Candidates can be `"trust"`, `"sanitize"`, or `"rebuild"`.
+- `solveAll(board)` repeatedly calls `solveStep` starting with `candidates: "rebuild"`, then `candidates: "trust"`, and stops when it returns `null`. It does **not** backtrack, so it may leave a partially solved board.
 
 To add an algorithm: write `findX`/`solveX` following these rules, add the name to `ALGORITHM_SCORE`, wire it into `solveStep` in difficulty order, and add tests. Keep the finder separate from the applier — the split exists so a scorer or hint UI can use deductions without mutating a board.
 
@@ -97,8 +102,8 @@ To add an algorithm: write `findX`/`solveX` following these rules, add the name 
 - Prefer `readonly` arrays/params where values are not mutated; preserve the existing immutability style.
 - Keep the **find/apply split** described in [Solver structure](#solver-structure-coresolvets): a pure `findX` returns a description of the deduction (or `null`), and `solveX` applies it. This supports scoring and step-by-step hints. Do not collapse these into one function.
 - Throw `RangeError` for bad indices/lengths and `IllegalStateError` for contradictory boards; avoid plain `Error` for these cases.
-- Follow the file layout: algorithm logic in `core/solver.ts` (or a new module), constants in `constants/`, generic helpers in `utils/`.
-- Public API changes must be reflected in `src/index.ts`. Note that `solveAll` is **not** exported from `index.ts`, even though `solveStep` is.
+- Follow the file layout: algorithm logic in `core/solver/algorithms.ts` with orchestration in `core/solver/solver.ts`, constants in `constants/`, generic helpers in `utils/`.
+- Public API changes must be reflected in `src/index.ts`. Both `solveStep` and `solveAll` are exported from `index.ts`.
 
 ## Testing
 
