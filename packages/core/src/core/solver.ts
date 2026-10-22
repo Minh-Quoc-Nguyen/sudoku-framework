@@ -1,8 +1,8 @@
 import type { Board, Cell } from "../types/board.type.js";
 import type { Algorithm } from "../types/solver.type.js";
-import { BOXES, COLUMN_OUTSIDE_BOX_OF, HOUSES, LINES, ROW_OUTSIDE_BOX_OF } from "../constants/cordinates.js";
+import { BOXES, COLUMN_OUTSIDE_BOX_OF, HOUSES, LINES, PEERS, ROW_OUTSIDE_BOX_OF } from "../constants/cordinates.js";
 import { indexToMask, isBitSet, lowestSetIndex, maskToIndex } from "../utils/bitwise.js";
-import { getCell, getPeers, removeCandidate, sanitizeCandidates } from "./common.js";
+import { getCell, getUnit, removeCandidate, sanitizeCandidates } from "./common.js";
 import { COL_MASKS, FULL_CANDIDATE_MASK, ROW_MASKS } from "../constants/bitwise.js";
 
 // Simple value assignment algs return the modification to prevent board instance creation, memory allocation and hand more control to caller
@@ -25,7 +25,8 @@ export function solveAll(board: Board): Board {
 
 export function solveStep(board: Board, { candidates = "sanitize" }: { candidates?: "trust" | "sanitize" | "rebuild" } = {}): { board: Board; alg: Algorithm } | null {
   // Rebuild regardless if explicitly set
-  let newBoard = candidates === "rebuild" ? sanitizeCandidates(board, true) : [...board];
+  // The solvers create a shallow board copy, therefore solveStep does not need to repeat this work
+  let newBoard = candidates === "rebuild" ? sanitizeCandidates(board, true) : board;
 
   const fullHouse = solveFullHouse(newBoard);
   if (fullHouse) return { board: fullHouse, alg: "FullHouse" };
@@ -51,7 +52,6 @@ export function solveStep(board: Board, { candidates = "sanitize" }: { candidate
 
 function applySimpleModification(board: Board, modification: SimpleModification | null): Board | null {
   if (modification === null) return null;
-  const peers = getPeers(modification.index);
   const newBoard = [...board];
   const cell = getCell(newBoard, modification.index);
   const mask = indexToMask(modification.value);
@@ -60,6 +60,7 @@ function applySimpleModification(board: Board, modification: SimpleModification 
   newBoard[modification.index] = { ...cell, value: modification.value, candidates: mask };
 
   // Modify peers
+  const peers = getUnit(PEERS, modification.index);
   for (const peer of peers) newBoard[peer] = removeCandidate(board, peer, mask);
 
   return newBoard;
@@ -188,19 +189,18 @@ function findPointingPairs(board: Board): { remove: readonly number[]; value: nu
       if (!isBitSet(eligible, i)) continue;
       const digitMask = indexToMask(i);
       const positionMask = candidates.reduce((mask, candidate, j) => ((candidate & digitMask) !== 0 ? mask | (1 << j) : mask), 0);
-      const trueIndex = box[lowestSetIndex(positionMask) ?? -1];
-      if (trueIndex == null) continue;
+      const trueIndex = getUnit(box, lowestSetIndex(positionMask) ?? -1);
 
       // Rows
-      const rowRemovable = ROW_OUTSIDE_BOX_OF[trueIndex];
-      if (rowRemovable && ROW_MASKS.some((m) => (positionMask & ~m) === 0)) {
+      const rowRemovable = getUnit(ROW_OUTSIDE_BOX_OF, trueIndex);
+      if (ROW_MASKS.some((m) => (positionMask & ~m) === 0)) {
         const removable = filterCellCandidates(board, rowRemovable, digitMask);
         if (removable) return { remove: removable, value: i };
       }
 
       // Cols
-      const colRemovable = COLUMN_OUTSIDE_BOX_OF[trueIndex];
-      if (colRemovable && COL_MASKS.some((m) => (positionMask & ~m) === 0)) {
+      const colRemovable = getUnit(COLUMN_OUTSIDE_BOX_OF, trueIndex);
+      if (COL_MASKS.some((m) => (positionMask & ~m) === 0)) {
         const removable = filterCellCandidates(board, colRemovable, digitMask);
         if (removable) return { remove: removable, value: i };
       }
