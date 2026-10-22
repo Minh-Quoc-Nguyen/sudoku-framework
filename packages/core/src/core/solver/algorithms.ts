@@ -1,5 +1,5 @@
-import { COL_MASKS, ROW_MASKS } from "../../constants/bitwise.js";
-import { BOXES, COLUMN_OUTSIDE_BOX_OF, HOUSES, LINES, PEERS, ROW_OUTSIDE_BOX_OF } from "../../constants/cordinates.js";
+import { COL_MASKS, LINE_MASKS, ROW_MASKS } from "../../constants/bitwise.js";
+import { BOX_OUTSIDE_COLUMN_OF, BOX_OUTSIDE_ROW_OF, BOXES, COLUMN_OUTSIDE_BOX_OF, COLUMNS, HOUSES, LINES, PEERS, ROW_OUTSIDE_BOX_OF, ROWS } from "../../constants/cordinates.js";
 import type { Board, Cell } from "../../types/board.type.js";
 import { indexToMask, lowestSetIndex, maskToIndex } from "../../utils/bitwise.js";
 import { candidatesToDigitMasks, getUnit, removeCandidate } from "../../utils/board.js";
@@ -156,6 +156,47 @@ function findPointingPairs(board: Board): { remove: readonly number[]; value: nu
 
 export function solvePointingPairs(board: Board): Board | null {
   const solution = findPointingPairs(board);
+  if (!solution) return null;
+  const newBoard = [...board];
+  const mask = indexToMask(solution.value);
+  for (const index of solution.remove) newBoard[index] = removeCandidate(board, index, mask);
+  return newBoard;
+}
+
+function findClaiming(board: Board): { remove: readonly number[]; value: number } | null {
+  // Rows
+  for (const row of ROWS) {
+    for (const { digit, mask } of candidatesToDigitMasks(board, row)) {
+      const trueIndex = getUnit(row, lowestSetIndex(mask) ?? -1);
+
+      if (LINE_MASKS.some((m) => (mask & ~m) === 0)) {
+        const rowRemovable = getUnit(BOX_OUTSIDE_ROW_OF, trueIndex);
+        const digitMask = indexToMask(digit);
+        const removable = filterCellCandidates(board, rowRemovable, digitMask);
+        if (removable) return { remove: removable, value: digit };
+      }
+    }
+  }
+
+  // Cols
+  for (const column of COLUMNS) {
+    for (const { digit, mask } of candidatesToDigitMasks(board, column)) {
+      const trueIndex = getUnit(column, lowestSetIndex(mask) ?? -1);
+
+      if (LINE_MASKS.some((m) => (mask & ~m) === 0)) {
+        const colRemovable = getUnit(BOX_OUTSIDE_COLUMN_OF, trueIndex);
+        const digitMask = indexToMask(digit);
+        const removable = filterCellCandidates(board, colRemovable, digitMask);
+        if (removable) return { remove: removable, value: digit };
+      }
+    }
+  }
+
+  return null;
+}
+
+export function solveClaiming(board: Board): Board | null {
+  const solution = findClaiming(board);
   if (!solution) return null;
   const newBoard = [...board];
   const mask = indexToMask(solution.value);
