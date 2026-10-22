@@ -1,9 +1,9 @@
-import type { Board } from "../types/board.type.js";
+import type { Board, Cell } from "../types/board.type.js";
 import type { Algorithm } from "../types/solver.type.js";
-import { BOXES, COLUMN_OUTSIDE_BOX_OF, HOUSES, LINES, ROW_OUTSIDE_BOX_OF } from "../constants/cordinates.js";
-import { indexToMask, lowestSetIndex, maskToIndex } from "../utils/bitwise.js";
-import { getCell, getPeers, removeCandidate, sanitizeCandidates } from "./common.js";
-import { COL_MASKS, ROW_MASKS } from "../constants/bitwise.js";
+import { BOXES, COLUMN_OUTSIDE_BOX_OF, HOUSES, LINES, PEERS, ROW_OUTSIDE_BOX_OF } from "../constants/cordinates.js";
+import { indexToMask, isBitSet, lowestSetIndex, maskToIndex } from "../utils/bitwise.js";
+import { getCell, getUnit, removeCandidate, sanitizeCandidates } from "./common.js";
+import { COL_MASKS, FULL_CANDIDATE_MASK, ROW_MASKS } from "../constants/bitwise.js";
 
 // Simple value assignment algs return the modification to prevent board instance creation, memory allocation and hand more control to caller
 interface SimpleModification {
@@ -25,7 +25,8 @@ export function solveAll(board: Board): Board {
 
 export function solveStep(board: Board, { candidates = "sanitize" }: { candidates?: "trust" | "sanitize" | "rebuild" } = {}): { board: Board; alg: Algorithm } | null {
   // Rebuild regardless if explicitly set
-  let newBoard = candidates === "rebuild" ? sanitizeCandidates(board, true) : [...board];
+  // The solvers create a shallow board copy, therefore solveStep does not need to repeat this work
+  let newBoard = candidates === "rebuild" ? sanitizeCandidates(board, true) : board;
 
   const fullHouse = solveFullHouse(newBoard);
   if (fullHouse) return { board: fullHouse, alg: "FullHouse" };
@@ -51,7 +52,6 @@ export function solveStep(board: Board, { candidates = "sanitize" }: { candidate
 
 function applySimpleModification(board: Board, modification: SimpleModification | null): Board | null {
   if (modification === null) return null;
-  const peers = getPeers(modification.index);
   const newBoard = [...board];
   const cell = getCell(newBoard, modification.index);
   const mask = indexToMask(modification.value);
@@ -60,6 +60,7 @@ function applySimpleModification(board: Board, modification: SimpleModification 
   newBoard[modification.index] = { ...cell, value: modification.value, candidates: mask };
 
   // Modify peers
+  const peers = getUnit(PEERS, modification.index);
   for (const peer of peers) newBoard[peer] = removeCandidate(board, peer, mask);
 
   return newBoard;
@@ -67,7 +68,7 @@ function applySimpleModification(board: Board, modification: SimpleModification 
 
 // Full house: a house with exactly one empty cell -> missing digit = 45 - sum of filled
 function findFullHouse(board: Board): SimpleModification | null {
-  boxLoop: for (const house of HOUSES) {
+  houseLoop: for (const house of HOUSES) {
     let sum = 0;
     let missingIndex: number | null = null;
 
@@ -78,11 +79,11 @@ function findFullHouse(board: Board): SimpleModification | null {
       } else if (missingIndex === null) {
         missingIndex = cellIndex;
       } else {
-        continue boxLoop;
+        continue houseLoop;
       }
     }
 
-    // Fully filled box: no empty cell found, nothing to place
+    // Fully filled house: no empty cell found, nothing to place
     if (missingIndex === null) continue;
 
     return { index: missingIndex, value: 45 - sum };
@@ -98,33 +99,29 @@ function solveFullHouse(board: Board): Board | null {
 // Hidden single: Within a unit, a value only appear as a candidate once
 function findHiddenSingleUnit(board: Board, units: readonly (readonly number[])[]): SimpleModification | null {
   for (const unit of units) {
-    // seenOnce: digits that are a candidate in >= 1 cell
-    // seenTwice: digits that are a candidate in >= 2 cells
     let seenOnce = 0;
     let seenTwice = 0;
-
+    // Store to reuse
+    const validCells: { cell: Cell; index: number }[] = [];
     for (const index of unit) {
       const cell = getCell(board, index);
+      // Has value, irrelevant
       if (cell.value !== null) continue;
 
+      validCells.push({ cell, index });
       const c = cell.candidates;
-      seenTwice |= seenOnce & c; // already seen before AND in this cell -> duplicate
+      seenTwice |= seenOnce & c;
       seenOnce |= c;
     }
 
-    // Digits with exactly one possible cell in this box
-    const unique = seenOnce & ~seenTwice;
-    if (unique === 0) continue; // common case: no hidden single in this box
+    // Find smallest digit that's unique
+    const value = lowestSetIndex(seenOnce & ~seenTwice);
+    if (value === null) continue;
+    const digitMask = indexToMask(value);
 
-    // Isolate lowest set bit; any hidden single is valid, so take the first
-    const bit = unique & -unique;
-    const value = maskToIndex(bit);
-    if (!value) continue;
-
-    // Second pass: find the single cell that holds this digit as a candidate
-    for (const index of unit) {
-      const cell = getCell(board, index);
-      if (cell.value === null && (cell.candidates & bit) !== 0) return { index, value };
+    // Filter for said cell
+    for (const { cell, index } of validCells) {
+      if ((cell.candidates & digitMask) !== 0) return { index, value };
     }
   }
 
@@ -162,45 +159,49 @@ function solveNakedSingle(board: Board): Board | null {
   return applySimpleModification(board, findNakedSingle(board));
 }
 
-interface PointingPair {
-  remove: readonly number[];
-  value: number;
+// Pointing pairs helper
+function filterCellCandidates(board: Board, cellIndexes: readonly number[], mask: number): number[] | null {
+  const result: number[] = [];
+  for (const index of cellIndexes) {
+    const cell = getCell(board, index);
+    if (!cell.value && (cell.candidates & mask) !== 0) result.push(index);
+  }
+  return result.length ? result : null;
 }
 
-// Pointing pairs: a digit is confined to one row/column of a box AND
-function findPointingPairs(board: Board): PointingPair | null {
-  const findRemovable = (box: (typeof BOXES)[number], mask: number, dir: "row" | "col"): readonly number[] | null => {
-    const relativeIndex = lowestSetIndex(mask);
-    if (relativeIndex === null) return null;
-    const trueIndex = box[relativeIndex];
-    if (!trueIndex) return null;
-    const removable = (dir === "row" ? ROW_OUTSIDE_BOX_OF : COLUMN_OUTSIDE_BOX_OF)[trueIndex];
-    if (!removable) return null;
-    // TODO: add check
-    return removable;
-  };
-
+// Pointing pairs: a digit is confined to one row/column of a box
+function findPointingPairs(board: Board): { remove: readonly number[]; value: number } | null {
   for (const box of BOXES) {
+    // If a digit already appears as a solved value, stop checking it
+    let eligible = FULL_CANDIDATE_MASK;
     const candidates: number[] = [];
     for (const index of box) {
       const cell = getCell(board, index);
-      candidates.push(cell.value ? 0 : cell.candidates);
+      if (cell.value) {
+        eligible &= ~indexToMask(cell.value);
+        candidates.push(0);
+      } else {
+        candidates.push(cell.candidates);
+      }
     }
 
     for (let i = 1; i <= 9; i++) {
+      if (!isBitSet(eligible, i)) continue;
       const digitMask = indexToMask(i);
       const positionMask = candidates.reduce((mask, candidate, j) => ((candidate & digitMask) !== 0 ? mask | (1 << j) : mask), 0);
-      if (!positionMask) continue;
+      const trueIndex = getUnit(box, lowestSetIndex(positionMask) ?? -1);
 
-      for (const rowMask of ROW_MASKS) {
-        if ((positionMask & ~rowMask) !== 0) continue;
-        const removable = findRemovable(box, positionMask, "row");
+      // Rows
+      const rowRemovable = getUnit(ROW_OUTSIDE_BOX_OF, trueIndex);
+      if (ROW_MASKS.some((m) => (positionMask & ~m) === 0)) {
+        const removable = filterCellCandidates(board, rowRemovable, digitMask);
         if (removable) return { remove: removable, value: i };
       }
 
-      for (const colMask of COL_MASKS) {
-        if ((positionMask & ~colMask) !== 0) continue;
-        const removable = findRemovable(box, positionMask, "col");
+      // Cols
+      const colRemovable = getUnit(COLUMN_OUTSIDE_BOX_OF, trueIndex);
+      if (COL_MASKS.some((m) => (positionMask & ~m) === 0)) {
+        const removable = filterCellCandidates(board, colRemovable, digitMask);
         if (removable) return { remove: removable, value: i };
       }
     }

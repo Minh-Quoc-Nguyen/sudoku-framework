@@ -10,10 +10,10 @@ export function getCell(board: Board, index: number): Cell {
   return cell;
 }
 
-export function getPeers(index: number): readonly number[] {
-  const peers = PEERS[index];
-  if (!peers) throw new RangeError(`Peers is falsy with index ${index.toString()}`);
-  return peers;
+export function getUnit<T>(unit: readonly T[], index: number): T {
+  const indexes = unit[index];
+  if (indexes == null) throw new RangeError(`Unit is nullish with index ${index.toString()}`);
+  return indexes;
 }
 
 // Trust caller candidates if rebuild = false
@@ -36,11 +36,9 @@ export function sanitizeCandidates(board: Board, rebuild = false): Board {
     }
 
     let used = 0;
-    for (const peer of peers) {
-      const peerValue = board[peer]?.value ?? null;
-      if (peerValue) {
-        used |= indexToMask(peerValue);
-      }
+    for (const index of peers) {
+      const peer = getCell(board, index);
+      if (peer.value) used |= indexToMask(peer.value);
     }
 
     const candidates = (rebuild ? FULL_CANDIDATE_MASK : cell.candidates) & ~used;
