@@ -223,7 +223,7 @@ function findNakedPair(board: Board): { house: readonly number[]; mask: number }
       validCells.push(cell);
       if (countSetBits(cell.candidates) === 2) {
         if (maskCount[cell.candidates]) {
-          if (maskCount[cell.candidates] === 2) throw new IllegalStateError(IllegalStateError.Code.TOO_MANY_NAKED);
+          if (maskCount[cell.candidates] === 2) throw new IllegalStateError(IllegalStateError.Code.ILLEGAL_NAKED_COUNT, maskCount[cell.candidates]);
           maskCount[cell.candidates] = 2;
           eligible.push(cell.candidates);
         } else {
@@ -276,7 +276,7 @@ function findHiddenPair(board: Board): { remove: number[]; mask: number } | null
     }
 
     for (const [mask, digits] of Object.entries(digitsOfMask)) {
-      if (digits.length > 2) throw new IllegalStateError(IllegalStateError.Code.TOO_MANY_HIDDEN);
+      if (digits.length > 2) throw new IllegalStateError(IllegalStateError.Code.ILLEGAL_HIDDEN_COUNT, digits.length);
       if (digits.length !== 2) continue;
       const relativeIndexes = setBitIndices(Number(mask));
       const digitMask = digits.reduce((acc, v) => acc | indexToMask(v), 0);
