@@ -25,6 +25,15 @@ export function fullMask(n: number): number {
   return n === 0 ? 0 : -1 >>> (32 - n);
 }
 
+export function countSetBits(mask: number): number {
+  let count = 0;
+  while (mask !== 0) {
+    mask &= mask - 1;
+    count++;
+  }
+  return count;
+}
+
 // Overloads: the return type is narrowed by the `output` argument,
 // so callers get boolean[] or number[] without casting.
 export function resolveCandidates(mask: number, output: "boolean"): boolean[];

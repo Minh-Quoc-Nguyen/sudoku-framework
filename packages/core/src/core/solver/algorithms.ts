@@ -1,7 +1,8 @@
+import { IllegalStateError } from "../../classes/errors.js";
 import { COL_MASKS, LINE_MASKS, ROW_MASKS } from "../../constants/bitwise.js";
 import { BOX_OUTSIDE_COLUMN_OF, BOX_OUTSIDE_ROW_OF, BOXES, COLUMN_OUTSIDE_BOX_OF, COLUMNS, HOUSES, LINES, PEERS, ROW_OUTSIDE_BOX_OF, ROWS } from "../../constants/cordinates.js";
 import type { Board, Cell } from "../../types/board.type.js";
-import { indexToMask, lowestSetIndex, maskToIndex } from "../../utils/bitwise.js";
+import { countSetBits, indexToMask, lowestSetIndex, maskToIndex } from "../../utils/bitwise.js";
 import { candidatesToDigitMasks, getUnit, removeCandidate } from "../../utils/board.js";
 
 // Simple value assignment algs return the modification to prevent board instance creation, memory allocation and hand more control to caller
@@ -201,5 +202,53 @@ export function solveClaiming(board: Board): Board | null {
   const newBoard = [...board];
   const mask = indexToMask(solution.value);
   for (const index of solution.remove) newBoard[index] = removeCandidate(board, index, mask);
+  return newBoard;
+}
+
+function findNakedPair(board: Board): { house: readonly number[]; mask: number } | null {
+  for (const house of HOUSES) {
+    const maskCount: Record<number, number> = {};
+    const eligible: number[] = [];
+    const validCells: Cell[] = [];
+
+    for (const index of house) {
+      const cell = getUnit(board, index);
+      if (cell.value) continue;
+      validCells.push(cell);
+      if (countSetBits(cell.candidates) === 2) {
+        if (maskCount[cell.candidates]) {
+          if (maskCount[cell.candidates] === 2) throw new IllegalStateError(IllegalStateError.Code.TOO_MANY_NAKED);
+          maskCount[cell.candidates] = 2;
+          eligible.push(cell.candidates);
+        } else {
+          maskCount[cell.candidates] = 1;
+        }
+      }
+    }
+
+    for (const mask of eligible) {
+      for (const cell of validCells) {
+        if (cell.candidates !== mask && (cell.candidates & mask) !== 0) return { house, mask };
+      }
+    }
+  }
+
+  return null;
+}
+
+export function solveNakedPair(board: Board): Board | null {
+  const solution = findNakedPair(board);
+  if (!solution) return null;
+  const newBoard = [...board];
+  for (const index of solution.house) {
+    const cell = getUnit(board, index);
+    if (cell.value) continue;
+    // This check differs from removeCandidate, but sits in the middle of chain
+    if (cell.candidates === solution.mask) continue;
+
+    const newCandidates = cell.candidates & ~solution.mask;
+    if (newCandidates === 0) throw new IllegalStateError(IllegalStateError.Code.NO_CANDIDATES);
+    newBoard[index] = cell.candidates === newCandidates ? cell : { ...cell, candidates: newCandidates };
+  }
   return newBoard;
 }

@@ -1,7 +1,7 @@
 import type { Board } from "../../types/board.type.js";
 import type { Algorithm } from "../../types/solver.type.js";
 import { sanitizeCandidates } from "../../utils/board.js";
-import { solveClaiming, solveFullHouse, solveHiddenSingleBox, solveHiddenSingleLine, solveNakedSingle, solvePointingPairs } from "./algorithms.js";
+import { solveClaiming, solveFullHouse, solveHiddenSingleBox, solveHiddenSingleLine, solveNakedPair, solveNakedSingle, solvePointingPairs } from "./algorithms.js";
 
 // TODO: improve solveAll with bulk actions + stateful skipping
 export function solveAll(board: Board): Board {
@@ -41,6 +41,9 @@ export function solveStep(board: Board, { candidates = "sanitize" }: { candidate
 
   const claiming = solveClaiming(newBoard);
   if (claiming) return { board: claiming, alg: "Claiming" };
+
+  const nakedPair = solveNakedPair(newBoard);
+  if (nakedPair) return { board: nakedPair, alg: "NakedPair" };
 
   // No solution
   return null;
