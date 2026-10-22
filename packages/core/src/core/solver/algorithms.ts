@@ -210,10 +210,16 @@ function findNakedPair(board: Board): { house: readonly number[]; mask: number }
     const maskCount: Record<number, number> = {};
     const eligible: number[] = [];
     const validCells: Cell[] = [];
+    let solved = 0;
 
     for (const index of house) {
+      // Early exit
+      if (9 - solved <= 2) break;
       const cell = getUnit(board, index);
-      if (cell.value) continue;
+      if (cell.value) {
+        solved++;
+        continue;
+      }
       validCells.push(cell);
       if (countSetBits(cell.candidates) === 2) {
         if (maskCount[cell.candidates]) {
@@ -225,6 +231,8 @@ function findNakedPair(board: Board): { house: readonly number[]; mask: number }
         }
       }
     }
+
+    if (9 - solved <= 2) continue;
 
     for (const mask of eligible) {
       for (const cell of validCells) {

@@ -54,4 +54,5 @@ export const ALGORITHM_SCORE = {
   KrakenFish: 93, // a.k.a. Mutant Fish
   DynamicForcingChains: 95,
   NestedForcingChains: 98,
+  BowmanBingo: 100,
 } as const;
