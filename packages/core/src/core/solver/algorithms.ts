@@ -205,62 +205,6 @@ export function solveClaiming(board: Board): Board | null {
   return newBoard;
 }
 
-function findNakedPair(board: Board): { house: readonly number[]; mask: number } | null {
-  for (const house of HOUSES) {
-    const maskCount: Record<number, number> = {};
-    const eligible: number[] = [];
-    const validCells: Cell[] = [];
-    let solved = 0;
-
-    for (const index of house) {
-      // Early exit
-      if (9 - solved <= 2) break;
-      const cell = getUnit(board, index);
-      if (cell.value) {
-        solved++;
-        continue;
-      }
-      validCells.push(cell);
-      if (countSetBits(cell.candidates) === 2) {
-        if (maskCount[cell.candidates]) {
-          if (maskCount[cell.candidates] === 2) throw new IllegalStateError(IllegalStateError.Code.ILLEGAL_NAKED_COUNT, maskCount[cell.candidates]);
-          maskCount[cell.candidates] = 2;
-          eligible.push(cell.candidates);
-        } else {
-          maskCount[cell.candidates] = 1;
-        }
-      }
-    }
-
-    if (9 - solved <= 2) continue;
-
-    for (const mask of eligible) {
-      for (const cell of validCells) {
-        if (cell.candidates !== mask && (cell.candidates & mask) !== 0) return { house, mask };
-      }
-    }
-  }
-
-  return null;
-}
-
-export function solveNakedPair(board: Board): Board | null {
-  const solution = findNakedPair(board);
-  if (!solution) return null;
-  const newBoard = [...board];
-  for (const index of solution.house) {
-    const cell = getUnit(board, index);
-    if (cell.value) continue;
-    // This check differs from removeCandidate, but sits in the middle of chain
-    if (cell.candidates === solution.mask) continue;
-
-    const newCandidates = cell.candidates & ~solution.mask;
-    if (newCandidates === 0) throw new IllegalStateError(IllegalStateError.Code.NO_CANDIDATES);
-    newBoard[index] = cell.candidates === newCandidates ? cell : { ...cell, candidates: newCandidates };
-  }
-  return newBoard;
-}
-
 function findHiddenPair(board: Board): { remove: number[]; mask: number } | null {
   for (const house of HOUSES) {
     const digitsOfMask: Record<number, number[]> = {};
