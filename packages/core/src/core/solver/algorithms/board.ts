@@ -9,10 +9,10 @@ export function findFullHouses(board: Board, { first = true }: BasicConfig = {})
   const results: SimpleModification[] = [];
   for (const house of HOUSES) {
     const result = findFullHouse(board, house);
-    if (result) {
-      results.push(result);
-      if (first) return results;
-    }
+
+    if (!result) continue;
+    if (first) return [result];
+    results.push(result);
   }
 
   return results.length ? results : null;
@@ -26,10 +26,10 @@ export function findNakedSets(board: Board, { first = true, size }: BasicConfig 
   const results: { masks: number[]; house: (typeof HOUSES)[number] }[] = [];
   for (const house of HOUSES) {
     const result = findNakedSetsInHouse(board, house, { first, size });
-    if (result) {
-      results.push({ masks: result, house });
-      if (first) return results;
-    }
+
+    if (!result) continue;
+    if (first) return [{ masks: result, house }];
+    results.push({ masks: result, house });
   }
   return results.length ? results : null;
 }

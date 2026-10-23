@@ -56,12 +56,13 @@ export function findHiddenSinglesInHouse(board: Board, house: House, { first = t
 
     const intersect = cell.candidates & onlyOnce;
 
-    if (countSetBits(intersect) === 1) {
-      const value = maskToIndex(intersect);
-      if (!value) throw new Error("Hidden single finder reached an illegal state where value is falsy");
-      results.push({ value, index });
-      if (first) return results;
-    }
+    if (countSetBits(intersect) !== 1) continue;
+
+    const value = maskToIndex(intersect);
+    if (!value) throw new Error("Hidden single finder reached an illegal state where value is falsy");
+
+    if (first) return [{ value, index }];
+    results.push({ value, index });
   }
 
   return results.length ? results : null;
@@ -175,10 +176,9 @@ export function findNakedSetsInHouse(board: Board, house: House, { size: n, firs
     // Seen twice: this is a naked pair. Keep it out of the pool so a larger
     // set can never absorb it, which keeps the results minimal. Report it only
     // when pairs were requested (no size given, or size 2).
-    if (nClamp === 2 && hasElimination(mask)) {
-      results.push(mask);
-      if (first) return results;
-    }
+    if (!(nClamp === 2 && hasElimination(mask))) continue;
+    if (first) return [mask];
+    results.push(mask);
   }
 
   // If size 2 was the whole request, we are done.
@@ -263,10 +263,9 @@ export function findNakedSetsInHouse(board: Board, house: House, { size: n, firs
 
       assertNotOverfilled(unionMask, k);
 
-      if (hasElimination(unionMask)) {
-        results.push(unionMask);
-        if (first) return results;
-      }
+      if (!hasElimination(unionMask)) continue;
+      if (first) return [unionMask];
+      results.push(unionMask);
     }
   }
 

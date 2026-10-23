@@ -8,10 +8,9 @@ function findHiddenSinglesBoxes(board: Board, { first = true }: BasicConfig = {}
   const results: SimpleModification[] = [];
   for (const box of BOXES) {
     const result = findHiddenSinglesInHouse(board, box, { first });
-    if (result) {
-      results.push(...result);
-      if (first) return results;
-    }
+    if (!result) continue;
+    if (first) return result;
+    results.push(...result);
   }
   return results.length ? results : null;
 }
@@ -24,10 +23,9 @@ function findHiddenSinglesLines(board: Board, { first = true }: BasicConfig = {}
   const results: SimpleModification[] = [];
   for (const line of LINES) {
     const result = findHiddenSinglesInHouse(board, line, { first });
-    if (result) {
-      results.push(...result);
-      if (first) return results;
-    }
+    if (!result) continue;
+    if (first) return result;
+    results.push(...result);
   }
   return results.length ? results : null;
 }
