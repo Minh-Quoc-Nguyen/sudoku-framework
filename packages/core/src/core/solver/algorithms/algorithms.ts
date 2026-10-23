@@ -1,27 +1,9 @@
 import { IllegalStateError } from "../../../classes/errors.js";
 import { COL_MASKS, LINE_MASKS, ROW_MASKS } from "../../../constants/bitwise.js";
 import { BOX_OUTSIDE_COLUMN_OF, BOX_OUTSIDE_ROW_OF, BOXES, COLUMN_OUTSIDE_BOX_OF, COLUMNS, HOUSES, ROW_OUTSIDE_BOX_OF, ROWS } from "../../../constants/cordinates.js";
-import type { SimpleModification } from "../../../types/algorithms.type.js";
 import type { Board } from "../../../types/board.type.js";
-import { countSetBits, indexToMask, lowestSetIndex, maskToIndex, setBitIndices } from "../../../utils/bitwise.js";
+import { countSetBits, indexToMask, lowestSetIndex, setBitIndices } from "../../../utils/bitwise.js";
 import { candidatesToDigitMasks, getUnit, removeCandidate } from "../../../utils/board.js";
-import { applySimpleModifications } from "./common.js";
-
-// Naked single: Cell only has one candidate
-function findNakedSingle(board: Board): SimpleModification | null {
-  for (let i = 0; i < 81; i++) {
-    const cell = getUnit(board, i);
-    if (cell.value) continue;
-    const value = maskToIndex(cell.candidates);
-    if (value) return { index: i, value };
-  }
-  return null;
-}
-
-export function solveNakedSingle(board: Board): Board | null {
-  const result = findNakedSingle(board);
-  return applySimpleModifications(board, result ? [result] : null);
-}
 
 // Pointing pairs helper
 function filterCellCandidates(board: Board, cellIndexes: readonly number[], mask: number): number[] | null {

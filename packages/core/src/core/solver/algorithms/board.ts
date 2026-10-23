@@ -1,11 +1,12 @@
-import { HOUSES } from "../../../constants/cordinates.js";
+import { BOARD, HOUSES } from "../../../constants/cordinates.js";
 import type { Board } from "../../../types/board.type.js";
 import type { BasicConfig, SimpleModification } from "../../../types/algorithms.type.js";
 import { getUnit } from "../../../utils/board.js";
 import { applySimpleModifications } from "./common.js";
 import { findFullHouse, findNakedSetsInHouse } from "./house.js";
+import { findNakedSingle } from "./cell.js";
 
-export function findFullHouses(board: Board, { first = true }: BasicConfig = {}): SimpleModification[] | null {
+function findFullHouses(board: Board, { first = true }: BasicConfig = {}): SimpleModification[] | null {
   const results: SimpleModification[] = [];
   for (const house of HOUSES) {
     const result = findFullHouse(board, house);
@@ -22,7 +23,22 @@ export function solveFullHouses(board: Board, config: BasicConfig = {}): Board |
   return applySimpleModifications(board, findFullHouses(board, config));
 }
 
-export function findNakedSets(board: Board, { first = true, size }: BasicConfig & { size?: number } = {}): { masks: number[]; house: (typeof HOUSES)[number] }[] | null {
+function findNakedSingles(board: Board, { first = true }: BasicConfig = {}): SimpleModification[] | null {
+  const results: SimpleModification[] = [];
+  for (const index of BOARD) {
+    const result = findNakedSingle(board, index);
+    if (!result) continue;
+    if (first) return [{ index, value: result }];
+    results.push({ index, value: result });
+  }
+  return results.length ? results : null;
+}
+
+export function solveNakedSingles(board: Board, config: BasicConfig): Board | null {
+  return applySimpleModifications(board, findNakedSingles(board, config));
+}
+
+function findNakedSets(board: Board, { first = true, size }: BasicConfig & { size?: number } = {}): { masks: number[]; house: (typeof HOUSES)[number] }[] | null {
   const results: { masks: number[]; house: (typeof HOUSES)[number] }[] = [];
   for (const house of HOUSES) {
     const result = findNakedSetsInHouse(board, house, { first, size });
