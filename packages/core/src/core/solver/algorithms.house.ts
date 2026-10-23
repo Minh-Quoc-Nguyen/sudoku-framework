@@ -24,14 +24,35 @@ import { getUnit } from "../../utils/board.js";
  *   for unattended full solves (stateful solvers, no user interaction), so it
  *   can miss a larger set in a small house, e.g. a usable triple when only 5
  *   cells are unsolved. Pass `size` to force a size.
- * - `size: n`: return usable sets of size n only. Smaller sizes are still
- *   searched first, just to consume their cells, so a result can never
- *   contain a smaller set. Returned sets are therefore always minimal.
+ * - `size: n`: return usable sets of size n only. Smaller sizes are not
+ *   searched first. For the currently supported sizes (n <= 4), minimality is
+ *   enforced on the set itself: every digit must be held by at least two of its
+ *   cells, so no smaller naked set can fit inside it.
  * - `first: true`: stop at the first usable set and return it.
  * - Returns `null` when no usable set matches the request.
  * - Throws `IllegalStateError` when a found set's digits enclose more cells
  *   than the set can hold (e.g. three cells sharing the same pair). This is
  *   only detected for sizes the search actually reaches.
+ *
+ * Generalization notes (the current implementation is 9x9-oriented):
+ * - Only `size` 2..4 is accepted; `n > 4` throws. The default search is also
+ *   capped at `floor(unsolved / 2)`, which is at most 4 in a 9-cell house.
+ * - The forced-size minimality check only rules out an `(n-1)`-subset. That is
+ *   enough for n = 4 because pairs are pre-excluded and 3 is the only smaller
+ *   size. It is not enough for n >= 5: a 5-set can contain a naked triple while
+ *   every digit still appears at least twice. To keep skipping k = 3..n-1 for
+ *   larger n, either consume every smaller size first or reject a found set
+ *   when any proper subset of size 3..n-1 has a union of exactly that many
+ *   digits (at most 2^n subsets; n <= 8 for a 16-cell house).
+ * - The `n > 4` guard should become `floor(house.length / 2)` (or a digit-count
+ *   limit). The `house` parameter is already `readonly number[]`, so a 16-cell
+ *   unit needs no signature change, and bits 1..16 fit in the current 32-bit
+ *   candidate masks.
+ * - Outside this finder, the 9x9 assumptions live in `constants/cordinates.ts`
+ *   (ROWS/COLUMNS/BOXES/PEERS), `constants/bitwise.ts` (FULL_DIGIT_MASK and the
+ *   row/column/line masks), `utils/bitwise.ts` (resolveCandidates hardcodes 9),
+ *   `utils/board.ts` (sanitizeCandidates hardcodes 81 and PEERS;
+ *   candidatesToDigitMasks loops 1..9), and `core/generator.ts`.
  */
 export function findNakedSetsInHouse(
   board: Board,
@@ -105,15 +126,22 @@ export function findNakedSetsInHouse(
   // If size 2 was the whole request, we are done.
   if (n === 2) return results.length > 0 ? results : null;
 
-  // Pairs are finished. Sets now start at size 3, even when the caller asked
-  // for quads: triples must be found and consumed first, otherwise a quad that
-  // contains a triple could be reported as a non-minimal result.
-  const SEARCH_START = 3;
+  // Pairs are finished. Without a forced size, start at 3 and consume smaller
+  // sizes so reported sets stay minimal. With a forced size, skip straight to
+  // it and enforce minimality in `findSubset` instead.
+  const SEARCH_START = n ?? 3;
   if (nLimit < SEARCH_START) return results.length > 0 ? results : null;
+
+  // Only forced sizes above 3 skip the smaller consume passes, so only they
+  // need the explicit minimality checks in `findSubset`. The default path (and
+  // size 3) already gets minimality from pair exclusion plus consuming every
+  // smaller size before trying a larger one.
+  const enforceMinimality = SEARCH_START > 3;
 
   // --- Prune until nothing changes ---
   // A mask with a candidate that no other mask shares cannot be part of a set,
-  // so drop it. We still start at 3 when n = 4, because triples matter too.
+  // so drop it. This also enforces a necessary condition for minimality: in a
+  // minimal k-set every digit appears in at least two of its cells.
   let twice = 0;
   let prevLength: number;
   do {
@@ -133,7 +161,26 @@ export function findNakedSetsInHouse(
 
   // --- Recursive search: pick k pool cells whose candidates add up to exactly k values ---
   const findSubset = (pool: number[], k: number, start = 0, picked: number[] = [], union = 0): number[] | null => {
-    if (picked.length === k) return countSetBits(union) === k ? picked : null;
+    if (picked.length === k) {
+      if (countSetBits(union) !== k) return null;
+      if (!enforceMinimality) return picked;
+
+      // Minimality: every digit must be held by at least two cells of the set.
+      // A digit held by one cell would leave a naked (k-1)-set behind.
+      let seen = 0;
+      let seenTwice = 0;
+      for (const index of picked) {
+        const mask = pool[index] ?? 0;
+        seenTwice |= seen & mask;
+        seen |= mask;
+      }
+      return countSetBits(seenTwice) === k ? picked : null;
+    }
+
+    // Early prune: every (k-1)-subset of a minimal k-set must still span all k
+    // digits. If this prefix does not, the omitted cell is the sole holder of
+    // at least one digit, so the final set would contain a smaller naked set.
+    if (enforceMinimality && picked.length === k - 1 && countSetBits(union) !== k) return null;
     if (pool.length - start < k - picked.length) return null;
 
     for (let i = start; i < pool.length; i++) {
@@ -145,12 +192,8 @@ export function findNakedSetsInHouse(
     return null;
   };
 
-  // Smallest size first, so a larger set never swallows a smaller one.
+  // With no forced size this runs 3..nLimit; with a forced size it runs only n.
   for (let k = SEARCH_START; k <= nLimit; k++) {
-    // Sizes below n are searched only to consume their cells (e.g. triples when
-    // n = 4). They are never reported and never checked for eliminations.
-    const report = k >= nClamp;
-
     let indices: number[] | null;
     while (usableMasks.length >= k && (indices = findSubset(usableMasks, k)) !== null) {
       const picked = new Set(indices);
@@ -160,11 +203,7 @@ export function findNakedSetsInHouse(
 
       usableMasks = usableMasks.filter((_, i) => !picked.has(i)); // a cell belongs to only one naked set
 
-      // Runs for consume-only sizes too: a broken house should be caught no
-      // matter which size exposed it.
       assertNotOverfilled(unionMask, k);
-
-      if (!report) continue; // consume-only size: don't report, don't check eliminations
 
       if (hasElimination(unionMask)) {
         results.push(unionMask);
