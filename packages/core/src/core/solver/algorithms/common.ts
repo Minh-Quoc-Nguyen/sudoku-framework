@@ -8,7 +8,12 @@ export function applySimpleModifications(board: Board, modifications: SimpleModi
   if (modifications === null) return null;
   const newBoard = [...board];
 
+  const placed: number[] = [];
+
   for (const modification of modifications) {
+    if (placed.includes(modification.index)) continue;
+    placed.push(modification.index);
+
     const cell = getUnit(newBoard, modification.index);
     const mask = indexToMask(modification.value);
 
@@ -22,7 +27,3 @@ export function applySimpleModifications(board: Board, modifications: SimpleModi
 
   return newBoard;
 }
-
-
-
-

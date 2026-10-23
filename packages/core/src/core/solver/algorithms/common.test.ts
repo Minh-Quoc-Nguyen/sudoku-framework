@@ -46,4 +46,34 @@ describe("applySimpleModifications", () => {
   it("returns null when there is nothing to apply", () => {
     expect(applySimpleModifications(boardWith({ 0: unsolved(bits(1, 2)) }), null)).toBeNull();
   });
+
+  it("applies a cell reported by several units only once", () => {
+    // A full house is the only empty cell of its row, column and box, so the
+    // finder reports the same placement once per unit.
+    const board = boardWith({ 0: unsolved(bits(1, 2, 3)), 1: unsolved(bits(1, 2, 3)) });
+    const single = applySimpleModifications(board, [{ index: 0, value: 1 }]);
+
+    const repeated = applySimpleModifications(board, [
+      { index: 0, value: 1 },
+      { index: 0, value: 1 },
+      { index: 0, value: 1 },
+    ]);
+
+    expect(repeated).toEqual(single);
+  });
+
+  it("keeps the first placement when a cell is reported with conflicting digits", () => {
+    // Applying the second placement would also remove 2 from cell 1, leaving it
+    // with no candidates; the duplicate is skipped instead.
+    const board = boardWith({ 0: unsolved(bits(1, 2)), 1: unsolved(bits(1, 2)) });
+
+    const next = applySimpleModifications(board, [
+      { index: 0, value: 1 },
+      { index: 0, value: 2 },
+    ]);
+
+    expect(next).not.toBeNull();
+    expect(getUnit(next ?? [], 0)).toEqual({ value: 1, candidates: indexToMask(1) });
+    expect(getUnit(next ?? [], 1).candidates).toBe(indexToMask(2));
+  });
 });
