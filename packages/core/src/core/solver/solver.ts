@@ -4,7 +4,7 @@ import { sanitizeCandidates } from "../../utils/board.js";
 import { solveClaiming, solveFullHouse, solveHiddenPair, solveHiddenSingleBox, solveHiddenSingleLine, solveNakedSingle, solvePointingPairs } from "./algorithms.js";
 import { solveNakedSets } from "./algorithms.board.js";
 
-// TODO: improve solveAll with bulk actions + stateful skipping
+// TODO: improve solveAll with bulk actions + stateful skipping (Owns the loop, selective calling, dirty house tracking)
 export function solveAll(board: Board): Board {
   let solvingBoard = board;
   let solution = solveStep(solvingBoard, { candidates: "rebuild" });
@@ -48,6 +48,9 @@ export function solveStep(board: Board, { candidates = "sanitize" }: { candidate
 
   const hiddenPair = solveHiddenPair(newBoard);
   if (hiddenPair) return { board: hiddenPair, alg: "HiddenPair" };
+
+  const nakedTriple = solveNakedSets(newBoard, { size: 3, first: true });
+  if (nakedTriple) return { board: nakedTriple, alg: "NakedTriple" };
 
   // No solution
   return null;
