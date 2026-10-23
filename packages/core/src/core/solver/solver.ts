@@ -1,8 +1,9 @@
 import type { Board } from "../../types/board.type.js";
-import type { Algorithm } from "../../types/solver.type.js";
+import type { Algorithm } from "../../types/algorithms.type.js";
 import { sanitizeCandidates } from "../../utils/board.js";
-import { solveClaiming, solveFullHouse, solveHiddenPair, solveHiddenSingleBox, solveHiddenSingleLine, solveNakedSingle, solvePointingPairs } from "./algorithms.js";
-import { solveNakedSets } from "./algorithms.board.js";
+import { solveClaiming, solveHiddenPair, solveNakedSingle, solvePointingPairs } from "./algorithms/algorithms.js";
+import { solveFullHouses, solveNakedSets } from "./algorithms/board.js";
+import { solveHiddenSinglesBoxes, solveHiddenSinglesLines } from "./algorithms/houses.js";
 
 // TODO: improve solveAll with bulk actions + stateful skipping (Owns the loop, selective calling, dirty house tracking)
 export function solveAll(board: Board): Board {
@@ -22,16 +23,16 @@ export function solveStep(board: Board, { candidates = "sanitize" }: { candidate
   // The solvers create a shallow board copy, therefore solveStep does not need to repeat this work
   let newBoard = candidates === "rebuild" ? sanitizeCandidates(board, true) : board;
 
-  const fullHouse = solveFullHouse(newBoard);
+  const fullHouse = solveFullHouses(newBoard, { first: false });
   if (fullHouse) return { board: fullHouse, alg: "FullHouse" };
 
   // Sanitize obvious candidates if untrusted, ready for higher algs
   if (candidates !== "rebuild") newBoard = candidates === "trust" ? newBoard : sanitizeCandidates(newBoard);
 
-  const hiddenSingleBox = solveHiddenSingleBox(newBoard);
+  const hiddenSingleBox = solveHiddenSinglesBoxes(newBoard, { first: false });
   if (hiddenSingleBox) return { board: hiddenSingleBox, alg: "HiddenSingleBox" };
 
-  const hiddenSingleLine = solveHiddenSingleLine(newBoard);
+  const hiddenSingleLine = solveHiddenSinglesLines(newBoard, { first: false });
   if (hiddenSingleLine) return { board: hiddenSingleLine, alg: "HiddenSingleLine" };
 
   const nakedSingle = solveNakedSingle(newBoard);

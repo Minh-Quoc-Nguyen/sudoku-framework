@@ -1,9 +1,71 @@
 // Solvers exported by this are run per-house
-import { IllegalStateError } from "../../classes/errors.js";
-import type { HOUSES } from "../../constants/cordinates.js";
-import type { Board, Cell } from "../../types/board.type.js";
-import { countSetBits } from "../../utils/bitwise.js";
-import { getUnit } from "../../utils/board.js";
+import { IllegalStateError } from "../../../classes/errors.js";
+import type { HOUSES } from "../../../constants/cordinates.js";
+import type { BasicConfig } from "../../../types/algorithms.type.js";
+import type { Board, Cell } from "../../../types/board.type.js";
+import type { SimpleModification } from "../../../types/algorithms.type.js";
+import { countSetBits, maskToIndex } from "../../../utils/bitwise.js";
+import { getUnit } from "../../../utils/board.js";
+
+type House = (typeof HOUSES)[number];
+
+// Full house: a house with exactly one empty cell -> missing digit = 45 - sum of filled
+export function findFullHouse(board: Board, house: House): SimpleModification | null {
+  let sum = 0;
+  let missingIndex: number | null = null;
+
+  for (const index of house) {
+    const cell = getUnit(board, index);
+    if (cell.value) {
+      sum += cell.value;
+    } else if (missingIndex === null) {
+      missingIndex = index;
+    } else {
+      // More than 1 unknowns
+      return null;
+    }
+  }
+
+  // Fully filled house
+  if (missingIndex === null) return null;
+
+  return { index: missingIndex, value: 45 - sum };
+}
+
+// Hidden single: Within a unit, a value only appear as a candidate once
+export function findHiddenSinglesInHouse(board: Board, house: House, { first = true }: BasicConfig = {}): SimpleModification[] | null {
+  let once = 0;
+  let twice = 0;
+  for (const index of house) {
+    const cell = getUnit(board, index);
+    // Has value, irrelevant
+    if (cell.value) continue;
+    twice |= once & cell.candidates;
+    once |= cell.candidates;
+  }
+
+  const onlyOnce = once & ~twice;
+  if (onlyOnce === 0) return null;
+
+  const results: SimpleModification[] = [];
+
+  for (const index of house) {
+    const cell = getUnit(board, index);
+    // Has value, irrelevant
+    if (cell.value) continue;
+
+    const intersect = cell.candidates & onlyOnce;
+
+    if (countSetBits(intersect) === 1) {
+      const value = maskToIndex(intersect);
+      if (!value) throw new Error("Hidden single finder reached an illegal state where value is falsy");
+      results.push({ value, index });
+      if (first) return results;
+    }
+  }
+
+  return results.length ? results : null;
+}
 
 /**
  * Find naked sets inside one house.
@@ -54,11 +116,7 @@ import { getUnit } from "../../utils/board.js";
  *   `utils/board.ts` (sanitizeCandidates hardcodes 81 and PEERS;
  *   candidatesToDigitMasks loops 1..9), and `core/generator.ts`.
  */
-export function findNakedSetsInHouse(
-  board: Board,
-  house: (typeof HOUSES)[number],
-  { size: n, first = false }: { size?: number; first?: boolean } = {},
-): number[] | null {
+export function findNakedSetsInHouse(board: Board, house: House, { size: n, first = false }: BasicConfig & { size?: number | undefined } = {}): number[] | null {
   if (n !== undefined && (n < 2 || n > 4)) throw new RangeError(`findNakedSets does not support n=${n.toString()}`);
 
   const unsolvedCells: Cell[] = [];

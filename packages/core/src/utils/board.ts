@@ -46,7 +46,7 @@ export function removeCandidate(board: Board, index: number, mask: number): Cell
   const cell = getUnit(board, index);
   if (cell.value) return cell;
   const newCandidates = cell.candidates & ~mask;
-  if (newCandidates === 0) throw new IllegalStateError(IllegalStateError.Code.NO_CANDIDATES);
+  if (newCandidates === 0) throw new IllegalStateError(IllegalStateError.Code.NO_CANDIDATES, index);
   return cell.candidates === newCandidates ? cell : { ...cell, candidates: newCandidates };
 }
 

@@ -1,109 +1,11 @@
-import { IllegalStateError } from "../../classes/errors.js";
-import { COL_MASKS, LINE_MASKS, ROW_MASKS } from "../../constants/bitwise.js";
-import { BOX_OUTSIDE_COLUMN_OF, BOX_OUTSIDE_ROW_OF, BOXES, COLUMN_OUTSIDE_BOX_OF, COLUMNS, HOUSES, LINES, PEERS, ROW_OUTSIDE_BOX_OF, ROWS } from "../../constants/cordinates.js";
-import type { Board, Cell } from "../../types/board.type.js";
-import { countSetBits, indexToMask, lowestSetIndex, maskToIndex, setBitIndices } from "../../utils/bitwise.js";
-import { candidatesToDigitMasks, getUnit, removeCandidate } from "../../utils/board.js";
-
-// Simple value assignment algs return the modification to prevent board instance creation, memory allocation and hand more control to caller
-interface SimpleModification {
-  index: number;
-  value: number;
-}
-
-function applySimpleModification(board: Board, modification: SimpleModification | null): Board | null {
-  if (modification === null) return null;
-  const newBoard = [...board];
-  const cell = getUnit(newBoard, modification.index);
-  const mask = indexToMask(modification.value);
-
-  // Modify cell
-  newBoard[modification.index] = { ...cell, value: modification.value, candidates: mask };
-
-  // Modify peers
-  const peers = getUnit(PEERS, modification.index);
-  for (const peer of peers) newBoard[peer] = removeCandidate(board, peer, mask);
-
-  return newBoard;
-}
-
-// Full house: a house with exactly one empty cell -> missing digit = 45 - sum of filled
-function findFullHouse(board: Board): SimpleModification | null {
-  houseLoop: for (const house of HOUSES) {
-    let sum = 0;
-    let missingIndex: number | null = null;
-
-    for (const cellIndex of house) {
-      const cell = getUnit(board, cellIndex);
-      if (cell.value) {
-        sum += cell.value;
-      } else if (missingIndex === null) {
-        missingIndex = cellIndex;
-      } else {
-        continue houseLoop;
-      }
-    }
-
-    // Fully filled house: no empty cell found, nothing to place
-    if (missingIndex === null) continue;
-
-    return { index: missingIndex, value: 45 - sum };
-  }
-
-  return null;
-}
-
-export function solveFullHouse(board: Board): Board | null {
-  return applySimpleModification(board, findFullHouse(board));
-}
-
-// Hidden single: Within a unit, a value only appear as a candidate once
-function findHiddenSingleUnit(board: Board, units: readonly (readonly number[])[]): SimpleModification | null {
-  for (const unit of units) {
-    let seenOnce = 0;
-    let seenTwice = 0;
-    // Store to reuse
-    const validCells: { cell: Cell; index: number }[] = [];
-    for (const index of unit) {
-      const cell = getUnit(board, index);
-      // Has value, irrelevant
-      if (cell.value !== null) continue;
-
-      validCells.push({ cell, index });
-      const c = cell.candidates;
-      seenTwice |= seenOnce & c;
-      seenOnce |= c;
-    }
-
-    // Find smallest digit that's unique
-    const value = lowestSetIndex(seenOnce & ~seenTwice);
-    if (value === null) continue;
-    const digitMask = indexToMask(value);
-
-    // Filter for said cell
-    for (const { cell, index } of validCells) {
-      if ((cell.candidates & digitMask) !== 0) return { index, value };
-    }
-  }
-
-  return null;
-}
-
-function findHiddenSingleBox(board: Board): SimpleModification | null {
-  return findHiddenSingleUnit(board, BOXES);
-}
-
-export function solveHiddenSingleBox(board: Board): Board | null {
-  return applySimpleModification(board, findHiddenSingleBox(board));
-}
-
-function findHiddenSingleLine(board: Board): SimpleModification | null {
-  return findHiddenSingleUnit(board, LINES);
-}
-
-export function solveHiddenSingleLine(board: Board): Board | null {
-  return applySimpleModification(board, findHiddenSingleLine(board));
-}
+import { IllegalStateError } from "../../../classes/errors.js";
+import { COL_MASKS, LINE_MASKS, ROW_MASKS } from "../../../constants/bitwise.js";
+import { BOX_OUTSIDE_COLUMN_OF, BOX_OUTSIDE_ROW_OF, BOXES, COLUMN_OUTSIDE_BOX_OF, COLUMNS, HOUSES, ROW_OUTSIDE_BOX_OF, ROWS } from "../../../constants/cordinates.js";
+import type { SimpleModification } from "../../../types/algorithms.type.js";
+import type { Board } from "../../../types/board.type.js";
+import { countSetBits, indexToMask, lowestSetIndex, maskToIndex, setBitIndices } from "../../../utils/bitwise.js";
+import { candidatesToDigitMasks, getUnit, removeCandidate } from "../../../utils/board.js";
+import { applySimpleModifications } from "./common.js";
 
 // Naked single: Cell only has one candidate
 function findNakedSingle(board: Board): SimpleModification | null {
@@ -117,7 +19,8 @@ function findNakedSingle(board: Board): SimpleModification | null {
 }
 
 export function solveNakedSingle(board: Board): Board | null {
-  return applySimpleModification(board, findNakedSingle(board));
+  const result = findNakedSingle(board);
+  return applySimpleModifications(board, result ? [result] : null);
 }
 
 // Pointing pairs helper
